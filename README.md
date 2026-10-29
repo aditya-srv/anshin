@@ -27,3 +27,18 @@ No real UNO rules are enforced — this is a demo UI only.
 npm run compile   # one-shot TypeScript build
 npm run watch     # rebuild on change
 ```
+
+### compile and build
+
+```bash
+cd /Users/serviots/aditya_personel/terminal_manager
+npm install
+npm run compile
+npx vsce package --allow-missing-repository
+```
+
+## install in cursor
+
+```bash
+cursor --install-extension anshin-0.0.1.vsix
+```

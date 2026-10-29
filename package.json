@@ -1,0 +1,50 @@
+{
+  "name": "anshin",
+  "displayName": "Anshin",
+  "description": "Anshin sidebar sessions panel",
+  "version": "0.0.1",
+  "publisher": "aditya",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "anshin",
+          "title": "Anshin",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "anshin": [
+        {
+          "type": "webview",
+          "id": "anshin.unoView",
+          "name": "Sessions"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test out/uno/engine.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

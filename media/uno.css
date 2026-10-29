@@ -1,0 +1,621 @@
+:root {
+  --card-w: 36px;
+  --card-h: 52px;
+  --card-w-sm: 26px;
+  --card-h-sm: 36px;
+  --gap: 4px;
+  --card-border: var(--vscode-panel-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.35)));
+  --card-fg: var(--vscode-foreground);
+  --card-bg: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 10px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-sideBar-background);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.title {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.gui-toggle {
+  display: inline-flex;
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.gui-btn {
+  margin: 0;
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.gui-btn + .gui-btn {
+  border-left: 1px solid var(--card-border);
+}
+
+.gui-btn.active {
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  opacity: 1;
+  font-weight: 600;
+}
+
+.gui-btn:hover {
+  opacity: 1;
+}
+
+.table {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.table-mid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.seat {
+  min-width: 0;
+}
+
+.seat-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.seat-count {
+  font-weight: 500;
+  opacity: 0.9;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.seat-top .seat-label,
+.seat-you .seat-label {
+  justify-content: center;
+  gap: 8px;
+}
+
+.seat-left .seat-label,
+.seat-right .seat-label {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  text-align: center;
+}
+
+.seat-left .seat-cards,
+.seat-right .seat-cards {
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 72px;
+  margin: 0 auto;
+}
+
+.seat-cards.fan {
+  position: relative;
+  min-height: var(--card-h-sm);
+}
+
+.discard-section {
+  margin: 0;
+  text-align: center;
+}
+
+.discard-section h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.row {
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+}
+
+.row.wrap {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.row.center {
+  justify-content: center;
+}
+
+.card {
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: 3px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--card-fg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-weight: 500;
+  font-size: 14px;
+  user-select: none;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.card.sm {
+  width: var(--card-w-sm);
+  height: var(--card-h-sm);
+  border-style: dashed;
+  opacity: 0.7;
+}
+
+.card.back {
+  font-size: 0;
+}
+
+.card.hand {
+  cursor: pointer;
+  transition: border-color 0.1s ease, opacity 0.1s ease;
+}
+
+.card.hand:hover {
+  border-color: var(--vscode-focusBorder, var(--card-fg));
+}
+
+.card.hand.selected {
+  border-color: var(--vscode-focusBorder, var(--card-fg));
+  border-width: 2px;
+}
+
+.card .color {
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  line-height: 1;
+}
+
+.card .value {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* Ultra GUI: looks like a boring sessions / queue panel */
+body.gui-ultra .table {
+  gap: 8px;
+}
+
+body.gui-ultra .table-mid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+body.gui-ultra .seat-left .seat-label,
+body.gui-ultra .seat-right .seat-label,
+body.gui-ultra .seat-top .seat-label,
+body.gui-ultra .seat-you .seat-label {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+body.gui-ultra .seat-cards {
+  display: none;
+}
+
+body.gui-ultra .discard-section {
+  text-align: left;
+  padding: 6px 0;
+  border-top: 1px solid var(--card-border);
+  border-bottom: 1px solid var(--card-border);
+}
+
+body.gui-ultra .discard-section h2 {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+body.gui-ultra #discard.row {
+  justify-content: flex-start;
+}
+
+body.gui-ultra #hand.row {
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+body.gui-ultra .card,
+body.gui-ultra .card.token {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 400;
+  box-shadow: none;
+  flex-direction: row;
+  gap: 0;
+  opacity: 0.9;
+}
+
+body.gui-ultra .card.hand:hover {
+  border-color: var(--card-border);
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12));
+}
+
+body.gui-ultra .card.hand.selected {
+  border-color: var(--vscode-focusBorder, var(--card-border));
+  background: var(--vscode-list-activeSelectionBackground, rgba(128, 128, 128, 0.18));
+  border-width: 1px;
+  outline: none;
+  transform: none;
+  box-shadow: none;
+}
+
+body.gui-ultra .gui-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  opacity: 0.45;
+}
+
+body.gui-ultra .gui-btn.active {
+  opacity: 0.85;
+}
+
+body.gui-ultra .status {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* High GUI: colored UNO-style cards */
+body.gui-high {
+  --card-w: 40px;
+  --card-h: 58px;
+  --card-w-sm: 28px;
+  --card-h-sm: 40px;
+}
+
+body.gui-high .card {
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 5px;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  gap: 0;
+}
+
+body.gui-high .card.sm {
+  border-width: 1.5px;
+  border-style: solid;
+  opacity: 1;
+}
+
+body.gui-high .card.red {
+  background: #c62828;
+}
+
+body.gui-high .card.yellow {
+  background: #f9a825;
+  color: #1a1a1a;
+}
+
+body.gui-high .card.green {
+  background: #2e7d32;
+}
+
+body.gui-high .card.blue {
+  background: #1565c0;
+}
+
+body.gui-high .card.back {
+  background: #1a237e;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    rgba(255, 255, 255, 0.08) 4px,
+    rgba(255, 255, 255, 0.08) 8px
+  );
+  color: #fff;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+body.gui-high .card.back.sm {
+  font-size: 0;
+}
+
+body.gui-high .card .color {
+  display: none;
+}
+
+body.gui-high .card .value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+body.gui-high .card.hand {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+body.gui-high .card.hand:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.95);
+}
+
+body.gui-high .card.hand.selected {
+  outline: 2px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 2px;
+  transform: translateY(-4px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  border-width: 2px;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+button#drawBtn {
+  align-self: stretch;
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+button#drawBtn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+button#drawBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.status {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.85;
+  line-height: 1.35;
+  min-height: 1.35em;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+.field input {
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  background: var(--vscode-input-background, transparent);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font: inherit;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.row-actions button,
+.secondary,
+#hostBtn,
+#joinBtn,
+#startBtn,
+#copyUrlBtn,
+#leaveLobbyBtn,
+#leaveGameBtn,
+#cancelWildBtn {
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.row-actions button.secondary,
+button.secondary {
+  background: transparent;
+  color: var(--vscode-foreground);
+  border-color: var(--card-border);
+}
+
+.row-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.join-url-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.join-url {
+  display: block;
+  padding: 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 11px;
+  word-break: break-all;
+  user-select: all;
+}
+
+.lobby-heading {
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.lobby-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.lobby-list li {
+  margin: 2px 0;
+}
+
+.color-line {
+  margin: 6px 0 0;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.your-turn .seat-name {
+  color: var(--vscode-focusBorder, var(--vscode-foreground));
+}
+
+.wild-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.wild-color {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 3px;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wild-color.red {
+  background: #c62828;
+}
+
+.wild-color.yellow {
+  background: #f9a825;
+  color: #1a1a1a;
+}
+
+.wild-color.green {
+  background: #2e7d32;
+}
+
+.wild-color.blue {
+  background: #1565c0;
+}
+
+body.gui-high .card.wild {
+  background: #212121;
+  background-image: conic-gradient(
+    #c62828 0deg 90deg,
+    #f9a825 90deg 180deg,
+    #2e7d32 180deg 270deg,
+    #1565c0 270deg 360deg
+  );
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actions #drawBtn,
+.actions #leaveGameBtn {
+  align-self: stretch;
+}

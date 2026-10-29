@@ -36,6 +36,7 @@ type IncomingMessage =
   | { type: 'chooseWildColor'; color: UnoColor }
   | { type: 'cancelWild' }
   | { type: 'draw' }
+  | { type: 'callUno' }
   | { type: 'copyJoinUrl' }
   | { type: 'setGuiMode'; mode: GuiMode };
 
@@ -176,6 +177,9 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this._client?.draw();
         this._state.selectedId = null;
         this._state.pendingWildCardId = null;
+        break;
+      case 'callUno':
+        this._client?.callUno();
         break;
     }
   }
@@ -452,6 +456,7 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
               winnerId: this._state.game.winnerId,
               playerCount: this._state.game.playerCount,
               awaitingWildColor: this._state.game.awaitingWildColor,
+              unoCall: this._state.game.unoCall,
               hand: playableHand(this._state.game),
             }
           : null,
@@ -560,6 +565,7 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     </div>
 
     <section class="section actions">
+      <button id="unoBtn" type="button" class="hidden">UNO</button>
       <button id="drawBtn" type="button">Draw</button>
       <button id="leaveGameBtn" type="button" class="secondary">Leave</button>
       <p id="status" class="status"></p>

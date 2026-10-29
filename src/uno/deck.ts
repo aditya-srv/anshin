@@ -49,3 +49,8 @@ export function shuffle<T>(cards: T[], random: () => number = Math.random): T[] 
 export function isWild(value: UnoValue): boolean {
   return value === 'wild' || value === 'wild4';
 }
+
+/** Skip, Reverse, Draw Two, Wild, and Wild Draw Four. */
+export function isSpecial(value: UnoValue): boolean {
+  return value === 'skip' || value === 'reverse' || value === 'draw2' || isWild(value);
+}

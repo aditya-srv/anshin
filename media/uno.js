@@ -23,6 +23,7 @@
   const discardLabelEl = document.getElementById('discardLabel');
   const colorLineEl = document.getElementById('colorLine');
   const appTitleEl = document.getElementById('appTitle');
+  const unoBtn = document.getElementById('unoBtn');
   const drawBtn = document.getElementById('drawBtn');
   const leaveGameBtn = document.getElementById('leaveGameBtn');
   const wildPicker = document.getElementById('wildPicker');
@@ -62,6 +63,13 @@
 
   drawBtn.addEventListener('click', function () {
     vscode.postMessage({ type: 'draw' });
+  });
+
+  unoBtn.addEventListener('click', function () {
+    if (unoBtn.disabled) {
+      return;
+    }
+    vscode.postMessage({ type: 'callUno' });
   });
 
   cancelWildBtn.addEventListener('click', function () {
@@ -136,6 +144,7 @@
     if (state.screen === 'menu') {
       appTitleEl.textContent = ultra ? 'Anshin' : 'Anshin · UNO';
       menuStatus.textContent = state.status || '';
+      renderUnoButton(null);
       return;
     }
 
@@ -143,6 +152,7 @@
       appTitleEl.textContent = ultra ? 'Anshin · lobby' : 'Anshin · UNO · Lobby';
       joinUrlDisplay.textContent = state.joinUrl || '';
       lobbyStatus.textContent = state.status || '';
+      renderUnoButton(null);
       startBtn.disabled = !state.youAreHost || !state.canStart;
       startBtn.classList.toggle('hidden', !state.youAreHost);
       renderLobby(state.lobbyPlayers || []);
@@ -166,16 +176,19 @@
         : 'Color: ' + game.currentColor + (game.direction === 1 ? ' · clockwise' : ' · counter-clockwise');
     }
 
-    renderOpponents(game.opponents || [], ultra, game.currentPlayerId);
+    renderOpponents(game.opponents || [], ultra, game.currentPlayerId, game.winnerId);
     renderDiscard(game.discard, ultra);
     renderHand(game.hand, state.selectedId, ultra);
 
     const handCount = (game.hand || []).length;
     youCountEl.textContent = ultra ? handCount + ' items' : handCount + ' cards';
-    youLabelEl.parentElement.classList.toggle(
-      'your-turn',
-      game.currentPlayerId === game.yourPlayerId && !game.winnerId
-    );
+    const yourSeat = youLabelEl.closest('.seat-you');
+    if (yourSeat) {
+      yourSeat.classList.toggle(
+        'your-turn',
+        game.currentPlayerId === game.yourPlayerId && !game.winnerId
+      );
+    }
 
     statusEl.textContent = state.status || game.status || '';
 
@@ -191,11 +204,52 @@
           : 'Draw (' + game.drawRemaining + ' left)';
     }
 
+    renderUnoButton(game.unoCall, game.yourPlayerId, ultra);
+
     const choosingOpening = !!game.awaitingWildColor && game.currentPlayerId === game.yourPlayerId;
     wildPicker.classList.toggle('hidden', !state.pendingWildCardId && !choosingOpening);
     if (cancelWildBtn) {
       cancelWildBtn.classList.toggle('hidden', choosingOpening);
     }
+  }
+
+  let unoTick = null;
+
+  function renderUnoButton(unoCall, yourPlayerId, ultra) {
+    if (unoTick) {
+      clearInterval(unoTick);
+      unoTick = null;
+    }
+    if (!unoCall) {
+      unoBtn.classList.add('hidden');
+      unoBtn.disabled = true;
+      return;
+    }
+    const mine = unoCall.playerId === yourPlayerId;
+    const enabled = unoCall.phase === 'priority' ? mine : !mine;
+    const endsAt = Date.now() + (unoCall.remainingMs || 0);
+    unoBtn.classList.remove('hidden');
+    unoBtn.disabled = !enabled;
+
+    function paint() {
+      const seconds = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      if (ultra) {
+        unoBtn.textContent = enabled ? 'Mark (' + seconds + 's)' : 'Wait (' + seconds + 's)';
+        return;
+      }
+      if (mine && unoCall.phase === 'priority') {
+        unoBtn.textContent = 'UNO (' + seconds + 's)';
+        return;
+      }
+      if (!mine && unoCall.phase === 'catch') {
+        unoBtn.textContent = 'Catch UNO (' + seconds + 's)';
+        return;
+      }
+      unoBtn.textContent = mine ? 'Too late (' + seconds + 's)' : 'UNO (' + seconds + 's)';
+    }
+
+    paint();
+    unoTick = setInterval(paint, 250);
   }
 
   function renderLobby(players) {
@@ -207,7 +261,7 @@
     });
   }
 
-  function renderOpponents(opponents, ultra, currentPlayerId) {
+  function renderOpponents(opponents, ultra, currentPlayerId, winnerId) {
     seatSlots.forEach(function (section) {
       if (section) {
         section.classList.add('hidden');
@@ -220,7 +274,7 @@
         return;
       }
       section.classList.remove('hidden');
-      section.classList.toggle('your-turn', seat.id === currentPlayerId);
+      section.classList.toggle('your-turn', !winnerId && seat.id === currentPlayerId);
       const nameEl = section.querySelector('.seat-name');
       const countEl = section.querySelector('.seat-count');
       const cardsEl = section.querySelector('.seat-cards');

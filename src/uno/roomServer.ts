@@ -1,6 +1,17 @@
 import * as http from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { chooseOpeningColor, createGame, drawCard, personalize, playCard } from './engine';
+import {
+  UNO_PRIORITY_MS,
+  UNO_TOTAL_MS,
+  callUno,
+  chooseOpeningColor,
+  createGame,
+  drawCard,
+  openUnoCatch,
+  penalizeMissedUno,
+  personalize,
+  playCard,
+} from './engine';
 import { formatJoinUrl, DEFAULT_UNO_PORT } from './lan';
 import { ClientMessage, LobbyPlayer, parseClientMessage, ServerMessage } from './protocol';
 import { GameSnapshot, UnoColor } from './types';
@@ -30,6 +41,7 @@ export class RoomServer {
   private port = 0;
   private joinUrl = '';
   private disposed = false;
+  private unoTimers: ReturnType<typeof setTimeout>[] = [];
 
   private constructor(httpServer: http.Server, wss: WebSocketServer) {
     this.httpServer = httpServer;
@@ -86,6 +98,7 @@ export class RoomServer {
     this.disposed = true;
     this.phase = 'closed';
     this.game = null;
+    this.clearUnoTimers();
 
     const seats = [...this.seats.values()];
     this.seats.clear();
@@ -143,6 +156,9 @@ export class RoomServer {
         break;
       case 'chooseColor':
         this.handleChooseColor(ws, msg.color);
+        break;
+      case 'uno':
+        this.handleUno(ws);
         break;
       case 'leave':
         ws.close();
@@ -217,9 +233,11 @@ export class RoomServer {
     this.game = result.game;
     if (this.game.winnerId) {
       this.phase = 'finished';
+      this.clearUnoTimers();
       this.broadcastGameOver();
       return;
     }
+    this.syncUnoTimers();
     this.broadcastGame();
   }
 
@@ -236,6 +254,24 @@ export class RoomServer {
       return;
     }
     this.game = result.game;
+    this.syncUnoTimers();
+    this.broadcastGame();
+  }
+
+  private handleUno(ws: WebSocket): void {
+    const seat = this.seats.get(ws);
+    if (!seat || !this.game || this.phase !== 'playing') {
+      this.send(ws, { type: 'error', reason: 'No active game.' });
+      return;
+    }
+
+    const result = callUno(this.game, seat.id, Date.now());
+    if (!result.ok) {
+      this.send(ws, { type: 'error', reason: result.reason });
+      return;
+    }
+    this.game = result.game;
+    this.syncUnoTimers();
     this.broadcastGame();
   }
 
@@ -252,7 +288,59 @@ export class RoomServer {
       return;
     }
     this.game = result.game;
+    this.syncUnoTimers();
     this.broadcastGame();
+  }
+
+  private syncUnoTimers(): void {
+    this.clearUnoTimers();
+    const game = this.game;
+    if (!game || !game.unoPendingPlayerId || this.phase !== 'playing') {
+      return;
+    }
+    const playerId = game.unoPendingPlayerId;
+    const startedAt = game.unoStartedAt;
+    const elapsed = Date.now() - startedAt;
+    const toCatch = Math.max(0, UNO_PRIORITY_MS - elapsed);
+    const toPenalty = Math.max(0, UNO_TOTAL_MS - elapsed);
+    this.unoTimers.push(setTimeout(() => this.enterUnoCatch(playerId, startedAt), toCatch));
+    this.unoTimers.push(setTimeout(() => this.expireUno(playerId, startedAt), toPenalty));
+  }
+
+  private enterUnoCatch(playerId: string, startedAt: number): void {
+    if (!this.sameUnoCall(playerId, startedAt) || !this.game) {
+      return;
+    }
+    this.game = openUnoCatch(this.game);
+    this.broadcastGame();
+  }
+
+  private expireUno(playerId: string, startedAt: number): void {
+    if (!this.sameUnoCall(playerId, startedAt) || !this.game) {
+      return;
+    }
+    const result = penalizeMissedUno(this.game);
+    if (result.ok) {
+      this.game = result.game;
+    }
+    this.clearUnoTimers();
+    this.broadcastGame();
+  }
+
+  private sameUnoCall(playerId: string, startedAt: number): boolean {
+    return (
+      this.phase === 'playing' &&
+      !!this.game &&
+      this.game.unoPendingPlayerId === playerId &&
+      this.game.unoStartedAt === startedAt
+    );
+  }
+
+  private clearUnoTimers(): void {
+    for (const timer of this.unoTimers) {
+      clearTimeout(timer);
+    }
+    this.unoTimers = [];
   }
 
   private handleDisconnect(ws: WebSocket): void {
@@ -282,6 +370,7 @@ export class RoomServer {
   private closeRoom(reason: string): void {
     this.phase = 'closed';
     this.game = null;
+    this.clearUnoTimers();
     const others = [...this.seats.values()];
     this.seats.clear();
     for (const other of others) {

@@ -111,6 +111,10 @@ export class RoomClient {
     this.send({ type: 'chooseColor', color });
   }
 
+  callUno(): void {
+    this.send({ type: 'uno' });
+  }
+
   leave(): void {
     this.send({ type: 'leave' });
     this.dispose();

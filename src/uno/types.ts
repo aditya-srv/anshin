@@ -26,6 +26,15 @@ export interface UnoCard {
 
 export type Direction = 1 | -1;
 
+export type UnoCallPhase = 'priority' | 'catch';
+
+export interface UnoCall {
+  playerId: string;
+  playerName: string;
+  phase: UnoCallPhase;
+  remainingMs: number;
+}
+
 export interface PlayerSeat {
   id: string;
   name: string;
@@ -43,6 +52,11 @@ export interface GameSnapshot {
   status: string;
   /** True after an opening wild until the starting player picks a color. */
   awaitingWildColor: boolean;
+  /** Player who just played down to one card and has not called UNO. */
+  unoPendingPlayerId: string | null;
+  unoPhase: UnoCallPhase | null;
+  /** Epoch ms when the current UNO window opened. */
+  unoStartedAt: number;
   /** Server-side shuffle source. Not sent to clients. */
   random: () => number;
 }
@@ -66,4 +80,5 @@ export interface PersonalizedState {
   winnerId: string | null;
   playerCount: number;
   awaitingWildColor: boolean;
+  unoCall: UnoCall | null;
 }

@@ -6,6 +6,7 @@ export type ClientMessage =
   | { type: 'play'; cardId: string; wildColor?: UnoColor }
   | { type: 'draw' }
   | { type: 'chooseColor'; color: UnoColor }
+  | { type: 'uno' }
   | { type: 'leave' };
 
 export interface LobbyPlayer {
@@ -94,6 +95,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       }
       return { type: 'chooseColor', color };
     }
+    case 'uno':
+      return { type: 'uno' };
     case 'leave':
       return { type: 'leave' };
     default:

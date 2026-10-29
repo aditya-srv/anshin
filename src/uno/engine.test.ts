@@ -1,12 +1,14 @@
 import assert from 'assert';
 import { describe, it } from 'node:test';
-import { createDeck, isWild, shuffle } from './deck';
+import { createDeck, isSpecial, isWild, shuffle } from './deck';
 import {
+  callUno,
   canPlay,
   chooseOpeningColor,
   createGame,
   drawCard,
   makeTestGame,
+  penalizeMissedUno,
   personalize,
   playCard,
 } from './engine';
@@ -29,9 +31,10 @@ function mustPlay(
   game: GameSnapshot,
   playerId: string,
   cardId: string,
-  wildColor?: UnoColor
+  wildColor?: UnoColor,
+  now?: number
 ): GameSnapshot {
-  const result = playCard(game, playerId, cardId, wildColor);
+  const result = playCard(game, playerId, cardId, wildColor, now);
   if (!result.ok) {
     assert.fail(result.reason);
   }
@@ -88,6 +91,25 @@ describe('createGame', () => {
     assert.ok(game.discardPile.length >= 1);
     assert.ok(game.discardPile[0].value !== 'wild4');
     assert.strictEqual(game.awaitingWildColor, false);
+  });
+
+  it('gives every player at least one special card', () => {
+    const two = [
+      { id: 'a', name: 'A' },
+      { id: 'b', name: 'B' },
+    ];
+    const four = [
+      ...two,
+      { id: 'c', name: 'C' },
+      { id: 'd', name: 'D' },
+    ];
+    for (const players of [two, four]) {
+      const game = createGame(players, () => 0.42);
+      for (const player of game.players) {
+        assert.strictEqual(player.hand.length, 7);
+        assert.ok(player.hand.some((card) => isSpecial(card.value)));
+      }
+    }
   });
 
   it('starts a number card at seat 0', () => {
@@ -497,5 +519,126 @@ describe('personalize', () => {
       counter.opponents.map((p) => p.id),
       ['b', 'a', 'd']
     );
+  });
+});
+
+describe('uno call', () => {
+  const started = 1_000_000;
+
+  function downToOne(): GameSnapshot {
+    const game = makeTestGame({
+      players: [
+        {
+          id: 'a',
+          name: 'A',
+          hand: [
+            { id: 'h1', color: 'red', value: '7' },
+            { id: 'keep', color: 'blue', value: '1' },
+          ],
+        },
+        {
+          id: 'b',
+          name: 'B',
+          hand: [
+            { id: 'h3', color: 'blue', value: '3' },
+            { id: 'h4', color: 'green', value: '4' },
+          ],
+        },
+      ],
+      currentPlayerIndex: 0,
+      currentColor: 'red',
+      discardPile: [{ id: 'd0', color: 'red', value: '5' }],
+      drawPile: [
+        { id: 'p0', color: 'yellow', value: '1' },
+        { id: 'p1', color: 'yellow', value: '2' },
+      ],
+    });
+    return mustPlay(game, 'a', 'h1', undefined, started);
+  }
+
+  it('opens a call when a player plays down to one card', () => {
+    const next = downToOne();
+    assert.strictEqual(next.unoPendingPlayerId, 'a');
+    assert.strictEqual(next.unoPhase, 'priority');
+    assert.strictEqual(next.unoStartedAt, started);
+    assert.strictEqual(next.players[0].hand.length, 1);
+    const view = personalize(next, 'b', started + 500);
+    assert.strictEqual(view.unoCall?.playerId, 'a');
+    assert.strictEqual(view.unoCall?.phase, 'priority');
+    assert.strictEqual(view.unoCall?.remainingMs, 4500);
+  });
+
+  it('lets the owner call UNO during the first 2 seconds', () => {
+    const next = callUno(downToOne(), 'a', started + 1000);
+    assert.ok(next.ok);
+    if (next.ok) {
+      assert.strictEqual(next.game.unoPendingPlayerId, null);
+      assert.strictEqual(next.game.players[0].hand.length, 1);
+      assert.strictEqual(next.game.status, 'A called UNO.');
+    }
+  });
+
+  it('rejects another player during the priority window', () => {
+    const next = callUno(downToOne(), 'b', started + 1000);
+    assert.strictEqual(next.ok, false);
+    if (!next.ok) {
+      assert.strictEqual(next.reason, 'Only the player with one card can call UNO right now.');
+    }
+  });
+
+  it('lets another player catch them after 2 seconds', () => {
+    const pending = downToOne();
+    const turn = pending.currentPlayerIndex;
+    const next = callUno(pending, 'b', started + 3000);
+    assert.ok(next.ok);
+    if (next.ok) {
+      assert.strictEqual(next.game.players[0].hand.length, 3);
+      assert.strictEqual(next.game.unoPendingPlayerId, null);
+      assert.strictEqual(next.game.currentPlayerIndex, turn);
+    }
+  });
+
+  it('rejects the owner after the priority window', () => {
+    const next = callUno(downToOne(), 'a', started + 3000);
+    assert.strictEqual(next.ok, false);
+    if (!next.ok) {
+      assert.strictEqual(next.reason, 'Too late to call UNO.');
+    }
+  });
+
+  it('draws 2 when nobody calls UNO', () => {
+    const next = penalizeMissedUno(downToOne());
+    assert.ok(next.ok);
+    if (next.ok) {
+      assert.strictEqual(next.game.players[0].hand.length, 3);
+      assert.strictEqual(next.game.unoPendingPlayerId, null);
+      assert.match(next.game.status, /did not call UNO/);
+    }
+  });
+
+  it('clears the call without a penalty when that player draws', () => {
+    const pending = downToOne();
+    pending.currentPlayerIndex = 0;
+    const next = drawCard(pending, 'a');
+    assert.ok(next.ok);
+    if (next.ok) {
+      assert.strictEqual(next.game.players[0].hand.length, 2);
+      assert.strictEqual(next.game.unoPendingPlayerId, null);
+    }
+  });
+
+  it('does not open a call when the last card wins', () => {
+    const game = makeTestGame({
+      players: [
+        { id: 'a', name: 'A', hand: [{ id: 'h1', color: 'red', value: '7' }] },
+        { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
+      ],
+      currentPlayerIndex: 0,
+      currentColor: 'red',
+      discardPile: [{ id: 'd0', color: 'red', value: '5' }],
+    });
+    const next = mustPlay(game, 'a', 'h1', undefined, started);
+    assert.strictEqual(next.winnerId, 'a');
+    assert.strictEqual(next.unoPendingPlayerId, null);
   });
 });

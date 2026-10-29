@@ -2,7 +2,7 @@
   "name": "anshin",
   "displayName": "Anshin",
   "description": "Anshin sidebar sessions panel",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "aditya",
   "engines": {
     "vscode": "^1.85.0"

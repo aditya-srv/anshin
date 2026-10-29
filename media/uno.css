@@ -445,6 +445,23 @@ body.gui-high .card.hand.selected {
   gap: 8px;
 }
 
+button#unoBtn {
+  align-self: stretch;
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: #c62828;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button#unoBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 button#drawBtn {
   align-self: stretch;
   padding: 6px 10px;
@@ -592,6 +609,24 @@ button.secondary {
   color: var(--vscode-focusBorder, var(--vscode-foreground));
 }
 
+.seat.your-turn .seat-cards,
+.seat.your-turn #hand {
+  outline: 1px solid rgba(255, 255, 255, 0.45);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+body.gui-ultra .seat.your-turn {
+  outline: 1px solid rgba(255, 255, 255, 0.45);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+body.gui-ultra .seat.your-turn .seat-cards,
+body.gui-ultra .seat.your-turn #hand {
+  outline: none;
+}
+
 .wild-picker {
   display: flex;
   flex-wrap: wrap;
@@ -645,6 +680,7 @@ body.gui-high .card.wild {
   gap: 8px;
 }
 
+.actions #unoBtn,
 .actions #drawBtn,
 .actions #leaveGameBtn {
   align-self: stretch;

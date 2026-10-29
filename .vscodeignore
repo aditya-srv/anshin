@@ -5,6 +5,12 @@ src/**
 tsconfig.json
 **/*.ts
 **/*.map
-node_modules/**
 *.md
 !README.md
+# Keep production deps (ws); drop tooling only
+node_modules/**
+!node_modules/ws/
+!node_modules/ws/**
+out/**/*.test.js
+*.vsix
+steps.md

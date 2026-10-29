@@ -17,7 +17,10 @@ export function getLanIPv4(): string | null {
       continue;
     }
     for (const entry of entries) {
-      if (String(entry.family) !== 'IPv4' || entry.internal) {
+      // Node/Electron may use 'IPv4' (string) or 4 (number).
+      const family = entry.family as string | number;
+      const isV4 = family === 'IPv4' || family === 4;
+      if (!isV4 || entry.internal) {
         continue;
       }
       candidates.push(entry.address);

@@ -1,9 +1,9 @@
 import * as http from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { createGame, drawCard, personalize, playCard } from './engine';
+import { chooseOpeningColor, createGame, drawCard, personalize, playCard } from './engine';
 import { formatJoinUrl, DEFAULT_UNO_PORT } from './lan';
 import { ClientMessage, LobbyPlayer, parseClientMessage, ServerMessage } from './protocol';
-import { GameSnapshot } from './types';
+import { GameSnapshot, UnoColor } from './types';
 
 interface Seat {
   id: string;
@@ -12,7 +12,9 @@ interface Seat {
   ws: WebSocket;
 }
 
-type Phase = 'lobby' | 'playing' | 'finished';
+type Phase = 'lobby' | 'playing' | 'finished' | 'closed';
+
+const MAX_MESSAGE_BYTES = 64 * 1024;
 
 export interface RoomServerOptions {
   port?: number;
@@ -27,6 +29,7 @@ export class RoomServer {
   private nextId = 1;
   private port = 0;
   private joinUrl = '';
+  private disposed = false;
 
   private constructor(httpServer: http.Server, wss: WebSocketServer) {
     this.httpServer = httpServer;
@@ -44,12 +47,22 @@ export class RoomServer {
       res.end('Anshin UNO room');
     });
 
-    const wss = new WebSocketServer({ server: httpServer });
+    const wss = new WebSocketServer({ server: httpServer, maxPayload: MAX_MESSAGE_BYTES });
 
-    await new Promise<void>((resolve, reject) => {
-      httpServer.once('error', reject);
-      httpServer.listen(port, '0.0.0.0', () => resolve());
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onError = (err: Error): void => reject(err);
+        httpServer.once('error', onError);
+        httpServer.listen(port, '0.0.0.0', () => {
+          httpServer.removeListener('error', onError);
+          resolve();
+        });
+      });
+    } catch (err) {
+      wss.close();
+      httpServer.close();
+      throw err;
+    }
 
     const room = new RoomServer(httpServer, wss);
     const addr = httpServer.address();
@@ -67,11 +80,19 @@ export class RoomServer {
   }
 
   async dispose(): Promise<void> {
-    for (const seat of this.seats.values()) {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.phase = 'closed';
+    this.game = null;
+
+    const seats = [...this.seats.values()];
+    this.seats.clear();
+    for (const seat of seats) {
       this.send(seat.ws, { type: 'ended', reason: 'Host closed the room.' });
       seat.ws.close();
     }
-    this.seats.clear();
 
     await new Promise<void>((resolve) => {
       this.wss.close(() => resolve());
@@ -82,6 +103,10 @@ export class RoomServer {
   }
 
   private attachSocket(ws: WebSocket): void {
+    ws.on('error', () => {
+      // 'close' follows. An unhandled 'error' event would crash the extension host.
+    });
+
     ws.on('message', (data) => {
       const text = typeof data === 'string' ? data : data.toString('utf8');
       const msg = parseClientMessage(text);
@@ -89,7 +114,12 @@ export class RoomServer {
         this.send(ws, { type: 'error', reason: 'Invalid message.' });
         return;
       }
-      this.handleMessage(ws, msg);
+      try {
+        this.handleMessage(ws, msg);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'Room error.';
+        this.send(ws, { type: 'error', reason });
+      }
     });
 
     ws.on('close', () => {
@@ -111,6 +141,9 @@ export class RoomServer {
       case 'draw':
         this.handleDraw(ws);
         break;
+      case 'chooseColor':
+        this.handleChooseColor(ws, msg.color);
+        break;
       case 'leave':
         ws.close();
         break;
@@ -118,6 +151,11 @@ export class RoomServer {
   }
 
   private handleJoin(ws: WebSocket, name: string): void {
+    if (this.phase === 'closed' || this.disposed) {
+      this.send(ws, { type: 'error', reason: 'Room is closed.' });
+      ws.close();
+      return;
+    }
     if (this.phase !== 'lobby') {
       this.send(ws, { type: 'error', reason: 'Game already started.' });
       ws.close();
@@ -171,12 +209,33 @@ export class RoomServer {
       return;
     }
 
-    this.game = playCard(this.game, seat.id, cardId, wildColor);
+    const result = playCard(this.game, seat.id, cardId, wildColor);
+    if (!result.ok) {
+      this.send(ws, { type: 'error', reason: result.reason });
+      return;
+    }
+    this.game = result.game;
     if (this.game.winnerId) {
       this.phase = 'finished';
       this.broadcastGameOver();
       return;
     }
+    this.broadcastGame();
+  }
+
+  private handleChooseColor(ws: WebSocket, color: UnoColor): void {
+    const seat = this.seats.get(ws);
+    if (!seat || !this.game || this.phase !== 'playing') {
+      this.send(ws, { type: 'error', reason: 'No active game.' });
+      return;
+    }
+
+    const result = chooseOpeningColor(this.game, seat.id, color);
+    if (!result.ok) {
+      this.send(ws, { type: 'error', reason: result.reason });
+      return;
+    }
+    this.game = result.game;
     this.broadcastGame();
   }
 
@@ -187,7 +246,12 @@ export class RoomServer {
       return;
     }
 
-    this.game = drawCard(this.game, seat.id);
+    const result = drawCard(this.game, seat.id);
+    if (!result.ok) {
+      this.send(ws, { type: 'error', reason: result.reason });
+      return;
+    }
+    this.game = result.game;
     this.broadcastGame();
   }
 
@@ -200,28 +264,30 @@ export class RoomServer {
 
     if (this.phase === 'lobby') {
       if (seat.isHost) {
-        for (const other of this.seats.values()) {
-          this.send(other.ws, { type: 'ended', reason: 'Host left the lobby.' });
-          other.ws.close();
-        }
-        this.seats.clear();
+        this.closeRoom('Host left the lobby.');
         return;
       }
       this.broadcastLobby();
       return;
     }
 
+    if (this.phase === 'closed') {
+      return;
+    }
+
     // During game / finished: end room simply (reconnect is polish-later).
-    for (const other of this.seats.values()) {
-      this.send(other.ws, {
-        type: 'ended',
-        reason: `${seat.name} disconnected. Room closed.`,
-      });
+    this.closeRoom(`${seat.name} disconnected. Room closed.`);
+  }
+
+  private closeRoom(reason: string): void {
+    this.phase = 'closed';
+    this.game = null;
+    const others = [...this.seats.values()];
+    this.seats.clear();
+    for (const other of others) {
+      this.send(other.ws, { type: 'ended', reason });
       other.ws.close();
     }
-    this.seats.clear();
-    this.game = null;
-    this.phase = 'lobby';
   }
 
   private broadcastLobby(): void {

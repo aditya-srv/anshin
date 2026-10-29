@@ -209,6 +209,36 @@ body {
   border-width: 2px;
 }
 
+.card.hand.unplayable {
+  opacity: 0.45;
+  cursor: default;
+}
+
+body.gui-low .card.red .color,
+body.gui-low .card.red .value {
+  color: #ef9a9a;
+}
+
+body.gui-low .card.yellow .color,
+body.gui-low .card.yellow .value {
+  color: #f6d56b;
+}
+
+body.gui-low .card.green .color,
+body.gui-low .card.green .value {
+  color: #81c784;
+}
+
+body.gui-low .card.blue .color,
+body.gui-low .card.blue .value {
+  color: #64b5f6;
+}
+
+body.gui-low .card.wild .color,
+body.gui-low .card.wild .value {
+  color: #ce93d8;
+}
+
 .card .color {
   font-size: 9px;
   font-weight: 400;

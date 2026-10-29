@@ -36,7 +36,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "npm run compile && node --test out/uno/engine.test.js"
+    "test": "npm run compile && node --test out/uno"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

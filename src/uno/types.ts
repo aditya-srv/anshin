@@ -41,6 +41,10 @@ export interface GameSnapshot {
   direction: Direction;
   winnerId: string | null;
   status: string;
+  /** True after an opening wild until the starting player picks a color. */
+  awaitingWildColor: boolean;
+  /** Server-side shuffle source. Not sent to clients. */
+  random: () => number;
 }
 
 export interface OpponentPublic {
@@ -61,4 +65,5 @@ export interface PersonalizedState {
   status: string;
   winnerId: string | null;
   playerCount: number;
+  awaitingWildColor: boolean;
 }

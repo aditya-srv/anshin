@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
+import { canPlay } from './uno/engine';
 import { DEFAULT_UNO_PORT } from './uno/lan';
 import { LobbyPlayer, ServerMessage } from './uno/protocol';
 import { RoomClient } from './uno/roomClient';
 import { RoomServer } from './uno/roomServer';
-import { PersonalizedState, UnoColor } from './uno/types';
+import { PersonalizedState, UnoCard, UnoColor } from './uno/types';
 
 export type GuiMode = 'ultra' | 'low' | 'high';
 
@@ -35,6 +36,7 @@ type IncomingMessage =
   | { type: 'chooseWildColor'; color: UnoColor }
   | { type: 'cancelWild' }
   | { type: 'draw' }
+  | { type: 'copyJoinUrl' }
   | { type: 'setGuiMode'; mode: GuiMode };
 
 export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -44,6 +46,10 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private _server: RoomServer | null = null;
   private _client: RoomClient | null = null;
   private _state: UiState;
+  private _busy = false;
+  private _sessionGen = 0;
+  private _shutdownPromise: Promise<void> | null = null;
+  private _webviewDisposables: vscode.Disposable[] = [];
 
   constructor(private readonly _extensionUri: vscode.Uri) {
     this._state = this.createMenuState();
@@ -55,27 +61,45 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     _token: vscode.CancellationToken
   ): void {
     this._view = webviewView;
+    this.clearWebviewListeners();
 
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, 'media')],
     };
 
+    this._webviewDisposables.push(
+      webviewView.webview.onDidReceiveMessage((message: IncomingMessage) => {
+        void this.handleMessage(message);
+      }),
+      webviewView.onDidChangeVisibility(() => {
+        if (webviewView.visible) {
+          this.postUi();
+        }
+      })
+    );
+
     webviewView.webview.html = this.getHtml(webviewView.webview);
+    this.postUi();
+  }
 
-    webviewView.webview.onDidReceiveMessage((message: IncomingMessage) => {
-      void this.handleMessage(message);
-    });
-
-    webviewView.onDidChangeVisibility(() => {
-      if (webviewView.visible) {
-        this.postUi();
-      }
-    });
+  public shutdown(): Promise<void> {
+    if (!this._shutdownPromise) {
+      this._shutdownPromise = this.teardownSession('Session closed.');
+    }
+    return this._shutdownPromise;
   }
 
   public dispose(): void {
-    void this.teardownSession('Session closed.');
+    this.clearWebviewListeners();
+    void this.shutdown();
+  }
+
+  private clearWebviewListeners(): void {
+    for (const item of this._webviewDisposables) {
+      item.dispose();
+    }
+    this._webviewDisposables = [];
   }
 
   private createMenuState(status = 'Host a room or join with a pasted ws:// address.'): UiState {
@@ -116,7 +140,10 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this._client?.start();
         break;
       case 'leave':
-        await this.teardownSession('Left the room.');
+        await this.runExclusive(() => this.teardownSession('Left the room.'));
+        break;
+      case 'copyJoinUrl':
+        await this.copyJoinUrl();
         break;
       case 'select':
         this.handleSelect(message.cardId);
@@ -127,6 +154,10 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this._state.pendingWildCardId = null;
         break;
       case 'chooseWildColor':
+        if (this._state.game?.awaitingWildColor) {
+          this._client?.chooseColor(message.color);
+          break;
+        }
         if (this._state.pendingWildCardId) {
           this._client?.play(this._state.pendingWildCardId, message.color);
           this._state.selectedId = null;
@@ -135,6 +166,9 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         }
         break;
       case 'cancelWild':
+        if (this._state.game?.awaitingWildColor) {
+          break;
+        }
         this._state.pendingWildCardId = null;
         this.postUi();
         break;
@@ -151,6 +185,11 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     if (!game || game.winnerId) {
       return;
     }
+    if (game.awaitingWildColor) {
+      this._state.status = 'Choose a color first.';
+      this.postUi();
+      return;
+    }
     if (game.currentPlayerId !== game.yourPlayerId) {
       this._state.status = 'Not your turn.';
       this.postUi();
@@ -159,6 +198,11 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 
     const card = game.hand.find((c) => c.id === cardId);
     if (!card) {
+      return;
+    }
+    if (!canPlay(card, game.discard, game.currentColor)) {
+      this._state.status = 'Illegal play.';
+      this.postUi();
       return;
     }
 
@@ -180,77 +224,133 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.postUi();
   }
 
-  private async hostRoom(name: string): Promise<void> {
-    const trimmed = name.trim().slice(0, 24);
-    if (!trimmed) {
-      this._state.status = 'Enter a display name.';
+  private hostRoom(name: string): Promise<void> {
+    return this.runExclusive(async () => {
+      const trimmed = name.trim().slice(0, 24);
+      if (!trimmed) {
+        this._state.status = 'Enter a display name.';
+        this.postUi();
+        return;
+      }
+
+      await this.teardownSession();
+      const gen = this._sessionGen;
+
+      try {
+        this._server = await RoomServer.start({ port: DEFAULT_UNO_PORT });
+      } catch (err) {
+        if (gen !== this._sessionGen) {
+          return;
+        }
+        const reason = err instanceof Error ? err.message : String(err);
+        const guiMode = this._state.guiMode;
+        this._state = this.createMenuState(`Could not bind port ${DEFAULT_UNO_PORT}: ${reason}`);
+        this._state.guiMode = guiMode;
+        this.postUi();
+        return;
+      }
+
+      const server = this._server;
+      if (!server || gen !== this._sessionGen) {
+        await this.discardServer();
+        return;
+      }
+
+      this._state.yourName = trimmed;
+      this._state.youAreHost = true;
+      this._state.joinUrl = server.getJoinUrl();
+      this._state.status = 'Hosting… share the join URL.';
       this.postUi();
+
+      // Connect locally via loopback; share LAN URL with joiners.
+      const localUrl = `ws://127.0.0.1:${server.getPort()}`;
+      try {
+        await this.connectClient(localUrl, trimmed);
+      } catch (err) {
+        if (gen !== this._sessionGen) {
+          return;
+        }
+        const reason = err instanceof Error ? err.message : String(err);
+        await this.teardownSession(`Host client failed: ${reason}`);
+      }
+    });
+  }
+
+  private joinRoom(name: string, url: string): Promise<void> {
+    return this.runExclusive(async () => {
+      const trimmed = name.trim().slice(0, 24);
+      const joinUrl = url.trim();
+      if (!trimmed) {
+        this._state.status = 'Enter a display name.';
+        this.postUi();
+        return;
+      }
+      if (!/^wss?:\/\//i.test(joinUrl)) {
+        this._state.status = 'URL must start with ws:// or wss://';
+        this.postUi();
+        return;
+      }
+
+      await this.teardownSession();
+      const gen = this._sessionGen;
+      this._state.yourName = trimmed;
+      this._state.youAreHost = false;
+      this._state.joinUrl = joinUrl;
+      this._state.status = 'Connecting…';
+      this.postUi();
+
+      try {
+        await this.connectClient(joinUrl, trimmed);
+      } catch (err) {
+        if (gen !== this._sessionGen) {
+          return;
+        }
+        const reason = err instanceof Error ? err.message : String(err);
+        await this.teardownSession(`Join failed: ${reason}`);
+      }
+    });
+  }
+
+  private async runExclusive(task: () => Promise<void>): Promise<void> {
+    if (this._busy) {
       return;
     }
-
-    await this.teardownSession();
-
+    this._busy = true;
     try {
-      this._server = await RoomServer.start({ port: DEFAULT_UNO_PORT });
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      this._state = this.createMenuState(`Could not bind port ${DEFAULT_UNO_PORT}: ${reason}`);
-      this.postUi();
-      return;
-    }
-
-    this._state.yourName = trimmed;
-    this._state.youAreHost = true;
-    this._state.joinUrl = this._server.getJoinUrl();
-    this._state.status = 'Hosting… share the join URL.';
-
-    // Connect locally via loopback; share LAN URL with joiners.
-    const localUrl = `ws://127.0.0.1:${this._server.getPort()}`;
-    try {
-      await this.connectClient(localUrl, trimmed);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      await this.teardownSession(`Host client failed: ${reason}`);
+      await task();
+    } finally {
+      this._busy = false;
     }
   }
 
-  private async joinRoom(name: string, url: string): Promise<void> {
-    const trimmed = name.trim().slice(0, 24);
-    const joinUrl = url.trim();
-    if (!trimmed) {
-      this._state.status = 'Enter a display name.';
-      this.postUi();
+  private async discardServer(): Promise<void> {
+    const server = this._server;
+    this._server = null;
+    if (!server) {
       return;
     }
-    if (!/^wss?:\/\//i.test(joinUrl)) {
-      this._state.status = 'URL must start with ws:// or wss://';
-      this.postUi();
-      return;
-    }
-
-    await this.teardownSession();
-    this._state.yourName = trimmed;
-    this._state.youAreHost = false;
-    this._state.joinUrl = joinUrl;
-    this._state.status = 'Connecting…';
-    this.postUi();
-
     try {
-      await this.connectClient(joinUrl, trimmed);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      this._state = this.createMenuState(`Join failed: ${reason}`);
-      this.postUi();
+      await server.dispose();
+    } catch {
+      // ignore
     }
+  }
+
+  private async copyJoinUrl(): Promise<void> {
+    const url = this._state.joinUrl;
+    if (!url) {
+      return;
+    }
+    await vscode.env.clipboard.writeText(url);
+    this._state.status = 'Join URL copied.';
+    this.postUi();
   }
 
   private async connectClient(url: string, name: string): Promise<void> {
     const client = new RoomClient(
       (msg) => this.onServerMessage(msg),
       (reason) => {
-        if (this._state.screen !== 'menu') {
-          void this.teardownSession(reason);
-        }
+        void this.teardownSession(reason);
       }
     );
     this._client = client;
@@ -268,9 +368,7 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this._state.youAreHost = msg.youAreHost;
         this._state.yourPlayerId = msg.yourPlayerId;
         this._state.game = null;
-        this._state.status = msg.youAreHost
-          ? `Lobby · share ${msg.joinUrl}`
-          : 'Waiting for host to start…';
+        this._state.status = lobbyStatus(msg.youAreHost, msg.joinUrl);
         this.postUi();
         break;
       case 'state':
@@ -294,12 +392,12 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.postUi();
         break;
       case 'ended':
-        void this.teardownSession(msg.reason);
         break;
     }
   }
 
   private async teardownSession(status?: string): Promise<void> {
+    const gen = ++this._sessionGen;
     const client = this._client;
     this._client = null;
     client?.dispose();
@@ -312,6 +410,10 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       } catch {
         // ignore
       }
+    }
+
+    if (gen !== this._sessionGen) {
+      return;
     }
 
     const guiMode = this._state.guiMode;
@@ -341,7 +443,6 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
           ? {
               opponents: this._state.game.opponents,
               discard: this._state.game.discard,
-              hand: this._state.game.hand,
               drawRemaining: this._state.game.drawRemaining,
               currentPlayerId: this._state.game.currentPlayerId,
               yourPlayerId: this._state.game.yourPlayerId,
@@ -350,6 +451,8 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
               status: this._state.game.status,
               winnerId: this._state.game.winnerId,
               playerCount: this._state.game.playerCount,
+              awaitingWildColor: this._state.game.awaitingWildColor,
+              hand: playableHand(this._state.game),
             }
           : null,
       },
@@ -467,6 +570,25 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
 </body>
 </html>`;
   }
+}
+
+function lobbyStatus(youAreHost: boolean, joinUrl: string): string {
+  if (!youAreHost) {
+    return 'Waiting for host to start…';
+  }
+  if (/127\.0\.0\.1|localhost/i.test(joinUrl)) {
+    return `Lobby · only this machine can join (${joinUrl})`;
+  }
+  return `Lobby · share ${joinUrl}`;
+}
+
+function playableHand(game: PersonalizedState): Array<UnoCard & { playable: boolean }> {
+  const myTurn =
+    game.currentPlayerId === game.yourPlayerId && !game.winnerId && !game.awaitingWildColor;
+  return game.hand.map((card) => ({
+    ...card,
+    playable: myTurn && canPlay(card, game.discard, game.currentColor),
+  }));
 }
 
 function formatCard(card: { color: string | null; value: string }): string {

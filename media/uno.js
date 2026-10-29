@@ -57,15 +57,7 @@
   });
 
   copyUrlBtn.addEventListener('click', function () {
-    const text = joinUrlDisplay.textContent || '';
-    if (!text) {
-      return;
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).catch(function () {
-        // ignore
-      });
-    }
+    vscode.postMessage({ type: 'copyJoinUrl' });
   });
 
   drawBtn.addEventListener('click', function () {
@@ -166,9 +158,13 @@
     appTitleEl.textContent = ultra ? 'Anshin' : 'Anshin · UNO · ' + n + 'P';
     discardLabelEl.textContent = ultra ? 'Active' : 'Discard';
     youLabelEl.textContent = ultra ? 'local' : 'You';
-    colorLineEl.textContent = ultra
-      ? 'tone ' + game.currentColor
-      : 'Color: ' + game.currentColor + (game.direction === 1 ? ' · clockwise' : ' · counter-clockwise');
+    if (game.awaitingWildColor) {
+      colorLineEl.textContent = ultra ? 'tone ?' : 'Color: waiting';
+    } else {
+      colorLineEl.textContent = ultra
+        ? 'tone ' + game.currentColor
+        : 'Color: ' + game.currentColor + (game.direction === 1 ? ' · clockwise' : ' · counter-clockwise');
+    }
 
     renderOpponents(game.opponents || [], ultra, game.currentPlayerId);
     renderDiscard(game.discard, ultra);
@@ -184,7 +180,7 @@
     statusEl.textContent = state.status || game.status || '';
 
     const myTurn = game.currentPlayerId === game.yourPlayerId && !game.winnerId;
-    drawBtn.disabled = !myTurn || game.drawRemaining === 0;
+    drawBtn.disabled = !myTurn || !!game.awaitingWildColor;
     if (ultra) {
       drawBtn.textContent =
         game.drawRemaining === 0 ? 'Fetch (empty)' : 'Fetch (' + game.drawRemaining + ')';
@@ -195,7 +191,11 @@
           : 'Draw (' + game.drawRemaining + ' left)';
     }
 
-    wildPicker.classList.toggle('hidden', !state.pendingWildCardId);
+    const choosingOpening = !!game.awaitingWildColor && game.currentPlayerId === game.yourPlayerId;
+    wildPicker.classList.toggle('hidden', !state.pendingWildCardId && !choosingOpening);
+    if (cancelWildBtn) {
+      cancelWildBtn.classList.toggle('hidden', choosingOpening);
+    }
   }
 
   function renderLobby(players) {
@@ -265,7 +265,13 @@
       if (card.id === selectedId) {
         el.classList.add('selected');
       }
+      if (card.playable === false) {
+        el.classList.add('unplayable');
+      }
       el.addEventListener('click', function () {
+        if (card.playable === false) {
+          return;
+        }
         vscode.postMessage({ type: 'select', cardId: card.id });
       });
       handEl.appendChild(el);

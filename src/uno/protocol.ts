@@ -5,6 +5,7 @@ export type ClientMessage =
   | { type: 'start' }
   | { type: 'play'; cardId: string; wildColor?: UnoColor }
   | { type: 'draw' }
+  | { type: 'chooseColor'; color: UnoColor }
   | { type: 'leave' };
 
 export interface LobbyPlayer {
@@ -79,6 +80,20 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     }
     case 'draw':
       return { type: 'draw' };
+    case 'chooseColor': {
+      const wildColor = (data as { color?: unknown }).color;
+      const color =
+        wildColor === 'red' ||
+        wildColor === 'yellow' ||
+        wildColor === 'green' ||
+        wildColor === 'blue'
+          ? wildColor
+          : undefined;
+      if (!color) {
+        return null;
+      }
+      return { type: 'chooseColor', color };
+    }
     case 'leave':
       return { type: 'leave' };
     default:

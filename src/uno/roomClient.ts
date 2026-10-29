@@ -14,17 +14,42 @@ export class RoomClient {
     this.onClosed = onClosed;
   }
 
-  connect(url: string): Promise<void> {
+  connect(url: string, timeoutMs = 8000): Promise<void> {
     this.dispose();
 
     return new Promise((resolve, reject) => {
       let settled = false;
+      let opened = false;
+      let connectError: Error | null = null;
       const ws = new WebSocket(url);
       this.ws = ws;
 
-      ws.on('open', () => {
+      const finish = (err?: Error): void => {
+        if (settled) {
+          return;
+        }
         settled = true;
+        clearTimeout(timer);
+        if (err) {
+          reject(err);
+          return;
+        }
         resolve();
+      };
+
+      const timer = setTimeout(() => {
+        connectError = new Error('Connection timed out.');
+        try {
+          ws.close();
+        } catch {
+          // ignore
+        }
+        finish(connectError);
+      }, timeoutMs);
+
+      ws.on('open', () => {
+        opened = true;
+        finish();
       });
 
       ws.on('message', (data) => {
@@ -42,16 +67,25 @@ export class RoomClient {
       });
 
       ws.on('error', (err) => {
-        if (!settled) {
-          settled = true;
-          reject(err);
+        connectError = err instanceof Error ? err : new Error(String(err));
+        try {
+          ws.close();
+        } catch {
+          // ignore
         }
+        finish(connectError);
       });
 
       ws.on('close', () => {
-        if (this.ws === ws) {
-          this.ws = null;
-          this.onClosed('Connection closed.');
+        if (!settled) {
+          finish(connectError ?? new Error('Connection closed.'));
+        }
+        if (this.ws !== ws) {
+          return;
+        }
+        this.ws = null;
+        if (opened) {
+          this.onClosed(connectError ? connectError.message : 'Connection closed.');
         }
       });
     });
@@ -71,6 +105,10 @@ export class RoomClient {
 
   draw(): void {
     this.send({ type: 'draw' });
+  }
+
+  chooseColor(color: UnoColor): void {
+    this.send({ type: 'chooseColor', color });
   }
 
   leave(): void {

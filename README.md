@@ -1,6 +1,6 @@
 # Anshin
 
-Minimal VS Code extension with a lightly interactive UNO cards demo in the sidebar.
+Minimal VS Code extension that plays UNO with other people on your LAN from the sidebar.
 
 Extension id: `aditya.anshin`
 
@@ -15,11 +15,11 @@ npm install
 
 3. Press **F5** (or Run → Start Debugging → **Run Extension**).
 4. In the Extension Development Host window, click the **Anshin** icon in the Activity Bar.
-5. Use the **UNO** sidebar:
-   - Click a hand card to select it; click again to play it onto the discard pile.
-   - Click **Draw** to take the next card from the fake draw pile.
-
-No real UNO rules are enforced — this is a demo UI only.
+5. Use the sidebar:
+   - **Host room** or paste a `ws://` address and **Join room**.
+   - The host shares the join URL and starts once two to four players are in the lobby.
+   - On your turn, click a legal card to select it and click again to play it. Wilds ask for a color.
+   - **Draw** takes one card from the draw pile (the discard is reshuffled in when the pile runs out) and passes the turn. If nothing is left to draw, the turn passes.
 
 ## Develop
 
@@ -30,8 +30,9 @@ npm run watch     # rebuild on change
 
 ### compile and build
 
+From this extension folder:
+
 ```bash
-cd /Users/serviots/aditya_personel/terminal_manager
 npm install
 npm run compile
 npx vsce package --allow-missing-repository

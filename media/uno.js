@@ -7,8 +7,14 @@
   const nameInput = document.getElementById('nameInput');
   const urlInput = document.getElementById('urlInput');
   const hostBtn = document.getElementById('hostBtn');
+  const hostLocalBtn = document.getElementById('hostLocalBtn');
+  const hostRemoteBtn = document.getElementById('hostRemoteBtn');
+  const serverUrlField = document.getElementById('serverUrlField');
+  const serverUrlInput = document.getElementById('serverUrlInput');
   const joinBtn = document.getElementById('joinBtn');
   const menuStatus = document.getElementById('menuStatus');
+  let hostMode = 'local';
+  let serverUrlTouched = false;
   const joinUrlDisplay = document.getElementById('joinUrlDisplay');
   const joinUrlList = document.getElementById('joinUrlList');
   const copyUrlBtn = document.getElementById('copyUrlBtn');
@@ -47,8 +53,42 @@
       );
     });
 
+  function setHostMode(mode) {
+    hostMode = mode === 'remote' ? 'remote' : 'local';
+    if (hostLocalBtn) {
+      hostLocalBtn.classList.toggle('active', hostMode === 'local');
+    }
+    if (hostRemoteBtn) {
+      hostRemoteBtn.classList.toggle('active', hostMode === 'remote');
+    }
+    if (serverUrlField) {
+      serverUrlField.classList.toggle('hidden', hostMode !== 'remote');
+    }
+  }
+
+  if (hostLocalBtn) {
+    hostLocalBtn.addEventListener('click', function () {
+      setHostMode('local');
+    });
+  }
+  if (hostRemoteBtn) {
+    hostRemoteBtn.addEventListener('click', function () {
+      setHostMode('remote');
+    });
+  }
+  if (serverUrlInput) {
+    serverUrlInput.addEventListener('input', function () {
+      serverUrlTouched = true;
+    });
+  }
+
   hostBtn.addEventListener('click', function () {
-    vscode.postMessage({ type: 'host', name: nameInput.value });
+    vscode.postMessage({
+      type: 'host',
+      name: nameInput.value,
+      remote: hostMode === 'remote',
+      serverUrl: serverUrlInput ? serverUrlInput.value : '',
+    });
   });
 
   joinBtn.addEventListener('click', function () {
@@ -171,6 +211,16 @@
     if (state.screen === 'menu') {
       appTitleEl.textContent = ultra ? 'Anshin' : 'Anshin · UNO';
       menuStatus.textContent = state.status || '';
+      if (
+        serverUrlInput &&
+        !serverUrlTouched &&
+        typeof state.defaultServerUrl === 'string' &&
+        state.defaultServerUrl &&
+        !serverUrlInput.value
+      ) {
+        serverUrlInput.value = state.defaultServerUrl;
+      }
+      setHostMode(hostMode);
       renderUnoSaid(null, ultra);
       return;
     }

@@ -2,7 +2,7 @@
   "name": "anshin",
   "displayName": "Anshin",
   "description": "Anshin sidebar sessions panel",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "aditya",
   "engines": {
     "vscode": "^1.85.0"
@@ -30,13 +30,24 @@
           "name": "Sessions"
         }
       ]
+    },
+    "configuration": {
+      "title": "Anshin",
+      "properties": {
+        "anshin.serverUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Default Server Join URL for the Remote host toggle (include ?t= token). Leave empty to type it in the sidebar."
+        }
+      }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "npm run compile && node --test out/uno"
+    "server": "node out/server.js",
+    "test": "npm run compile && node --test out/uno/*.test.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

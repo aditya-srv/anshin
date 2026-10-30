@@ -618,6 +618,30 @@ body.gui-ultra .uno-said {
   gap: 10px;
 }
 
+.host-mode {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mode-btn.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: var(--vscode-button-border, transparent);
+}
+
 .check-row {
   display: inline-flex;
   align-items: center;

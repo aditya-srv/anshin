@@ -9,9 +9,15 @@ import {
   personalize,
   playCard,
 } from './engine';
-import { formatJoinUrls, DEFAULT_UNO_PORT } from './lan';
+import { formatJoinUrls, getLanIPv4s, DEFAULT_UNO_PORT } from './lan';
 import { ClientMessage, LobbyPlayer, parseClientMessage, ServerMessage } from './protocol';
 import { GameSnapshot, UnoColor } from './types';
+import {
+  appendRoomToken,
+  extractRoomTokenFromUrl,
+  generateRoomToken,
+  tokensEqual,
+} from './urlAuth';
 
 interface Seat {
   id: string;
@@ -23,15 +29,36 @@ interface Seat {
 type Phase = 'lobby' | 'playing' | 'finished' | 'closed';
 
 const MAX_MESSAGE_BYTES = 64 * 1024;
+const MAX_SOCKETS = 8;
+const IDLE_JOIN_MS = 5000;
+const RATE_WINDOW_MS = 1000;
+const RATE_MAX_MESSAGES = 20;
+const CLOSE_UNAUTHORIZED = 4001;
+const CLOSE_CAPACITY = 4002;
+const CLOSE_IDLE = 4003;
+const CLOSE_RATE = 4004;
 
 export interface RoomServerOptions {
   port?: number;
+  /** Interface to bind (default 0.0.0.0). */
+  bindHost?: string;
+  /** When true, reset to an empty lobby instead of closing the process forever. */
+  persistent?: boolean;
+  /** Preferred host in join URLs (e.g. EC2 public IP / DNS). */
+  publicHost?: string;
+  /** Shared secret embedded as `?t=` on join URLs. Generated if omitted. */
+  roomToken?: string;
 }
 
 export class RoomServer {
   private readonly httpServer: http.Server;
   private readonly wss: WebSocketServer;
   private readonly seats = new Map<WebSocket, Seat>();
+  private readonly pending = new Set<WebSocket>();
+  private readonly idleTimers = new Map<WebSocket, ReturnType<typeof setTimeout>>();
+  private readonly rateBuckets = new Map<WebSocket, { count: number; windowStart: number }>();
+  private readonly persistent: boolean;
+  private readonly roomToken: string;
   private phase: Phase = 'lobby';
   private game: GameSnapshot | null = null;
   private nextId = 1;
@@ -40,20 +67,31 @@ export class RoomServer {
   private joinUrls: string[] = [];
   private disposed = false;
 
-  private constructor(httpServer: http.Server, wss: WebSocketServer) {
+  private constructor(
+    httpServer: http.Server,
+    wss: WebSocketServer,
+    persistent: boolean,
+    roomToken: string
+  ) {
     this.httpServer = httpServer;
     this.wss = wss;
+    this.persistent = persistent;
+    this.roomToken = roomToken;
 
-    this.wss.on('connection', (ws) => {
-      this.attachSocket(ws);
+    this.wss.on('connection', (ws, req) => {
+      this.onConnection(ws, req);
     });
   }
 
   static async start(options: RoomServerOptions = {}): Promise<RoomServer> {
     const port = options.port ?? DEFAULT_UNO_PORT;
+    const bindHost = options.bindHost?.trim() || '0.0.0.0';
+    const persistent = options.persistent === true;
+    const roomToken = options.roomToken?.trim() || generateRoomToken();
+
     const httpServer = http.createServer((_req, res) => {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('Anshin UNO room');
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not Found');
     });
 
     const wss = new WebSocketServer({ server: httpServer, maxPayload: MAX_MESSAGE_BYTES });
@@ -62,7 +100,7 @@ export class RoomServer {
       await new Promise<void>((resolve, reject) => {
         const onError = (err: Error): void => reject(err);
         httpServer.once('error', onError);
-        httpServer.listen(port, '0.0.0.0', () => {
+        httpServer.listen(port, bindHost, () => {
           httpServer.removeListener('error', onError);
           resolve();
         });
@@ -73,11 +111,17 @@ export class RoomServer {
       throw err;
     }
 
-    const room = new RoomServer(httpServer, wss);
+    const room = new RoomServer(httpServer, wss, persistent, roomToken);
     const addr = httpServer.address();
     room.port = typeof addr === 'object' && addr ? addr.port : port;
-    room.joinUrls = formatJoinUrls(room.port);
-    room.joinUrl = room.joinUrls[0] ?? `ws://127.0.0.1:${room.port}`;
+    const lanHosts = getLanIPv4s();
+    const publicHost = options.publicHost?.trim();
+    const hosts = publicHost
+      ? [publicHost, ...lanHosts.filter((h) => h !== publicHost)]
+      : lanHosts;
+    const bareUrls = formatJoinUrls(room.port, hosts);
+    room.joinUrls = bareUrls.map((url) => appendRoomToken(url, roomToken));
+    room.joinUrl = room.joinUrls[0] ?? appendRoomToken(`ws://127.0.0.1:${room.port}`, roomToken);
     return room;
   }
 
@@ -89,6 +133,10 @@ export class RoomServer {
     return this.port;
   }
 
+  getRoomToken(): string {
+    return this.roomToken;
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) {
       return;
@@ -96,6 +144,13 @@ export class RoomServer {
     this.disposed = true;
     this.phase = 'closed';
     this.game = null;
+
+    for (const timer of this.idleTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.idleTimers.clear();
+    this.rateBuckets.clear();
+    this.pending.clear();
 
     const seats = [...this.seats.values()];
     this.seats.clear();
@@ -112,12 +167,58 @@ export class RoomServer {
     });
   }
 
+  private socketCount(): number {
+    return this.seats.size + this.pending.size;
+  }
+
+  private onConnection(ws: WebSocket, req: http.IncomingMessage): void {
+    if (this.disposed || this.phase === 'closed') {
+      ws.close(CLOSE_UNAUTHORIZED, 'Room closed');
+      return;
+    }
+
+    const provided = extractRoomTokenFromUrl(req.url ?? '/');
+    if (!tokensEqual(this.roomToken, provided)) {
+      ws.close(CLOSE_UNAUTHORIZED, 'Unauthorized');
+      return;
+    }
+
+    if (this.socketCount() >= MAX_SOCKETS) {
+      ws.close(CLOSE_CAPACITY, 'Room at capacity');
+      return;
+    }
+
+    this.pending.add(ws);
+    this.attachSocket(ws);
+  }
+
+  private clearIdle(ws: WebSocket): void {
+    const timer = this.idleTimers.get(ws);
+    if (timer) {
+      clearTimeout(timer);
+      this.idleTimers.delete(ws);
+    }
+  }
+
   private attachSocket(ws: WebSocket): void {
     ws.on('error', () => {
       // 'close' follows. An unhandled 'error' event would crash the extension host.
     });
 
+    const idleTimer = setTimeout(() => {
+      if (this.pending.has(ws) && !this.seats.has(ws)) {
+        this.send(ws, { type: 'error', reason: 'Join timed out.' });
+        ws.close(CLOSE_IDLE, 'Join timed out');
+      }
+    }, IDLE_JOIN_MS);
+    this.idleTimers.set(ws, idleTimer);
+
     ws.on('message', (data) => {
+      if (!this.allowMessage(ws)) {
+        this.send(ws, { type: 'error', reason: 'Too many messages.' });
+        ws.close(CLOSE_RATE, 'Rate limited');
+        return;
+      }
       const text = typeof data === 'string' ? data : data.toString('utf8');
       const msg = parseClientMessage(text);
       if (!msg) {
@@ -126,15 +227,28 @@ export class RoomServer {
       }
       try {
         this.handleMessage(ws, msg);
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : 'Room error.';
-        this.send(ws, { type: 'error', reason });
+      } catch {
+        this.send(ws, { type: 'error', reason: 'Room error.' });
       }
     });
 
     ws.on('close', () => {
+      this.clearIdle(ws);
+      this.pending.delete(ws);
+      this.rateBuckets.delete(ws);
       this.handleDisconnect(ws);
     });
+  }
+
+  private allowMessage(ws: WebSocket): boolean {
+    const now = Date.now();
+    let bucket = this.rateBuckets.get(ws);
+    if (!bucket || now - bucket.windowStart >= RATE_WINDOW_MS) {
+      bucket = { count: 0, windowStart: now };
+      this.rateBuckets.set(ws, bucket);
+    }
+    bucket.count += 1;
+    return bucket.count <= RATE_MAX_MESSAGES;
   }
 
   private handleMessage(ws: WebSocket, msg: ClientMessage): void {
@@ -186,6 +300,9 @@ export class RoomServer {
       ws.close();
       return;
     }
+
+    this.clearIdle(ws);
+    this.pending.delete(ws);
 
     const id = `p${this.nextId++}`;
     const isHost = this.seats.size === 0;
@@ -244,6 +361,9 @@ export class RoomServer {
     if (this.game.winnerId) {
       this.phase = 'finished';
       this.broadcastGameOver();
+      if (this.persistent) {
+        this.resetToLobby('Game over. Room reset — join again to play.');
+      }
       return;
     }
     this.broadcastGame();
@@ -322,6 +442,11 @@ export class RoomServer {
 
     if (this.phase === 'lobby') {
       if (seat.isHost) {
+        if (this.persistent && this.seats.size > 0) {
+          this.promoteHost();
+          this.broadcastLobby();
+          return;
+        }
         this.closeRoom('Host left the lobby.');
         return;
       }
@@ -337,7 +462,35 @@ export class RoomServer {
     this.closeRoom(`${seat.name} disconnected. Room closed.`);
   }
 
+  private promoteHost(): void {
+    let promoted: Seat | undefined;
+    for (const seat of this.seats.values()) {
+      if (!promoted) {
+        promoted = seat;
+        seat.isHost = true;
+      } else {
+        seat.isHost = false;
+      }
+    }
+  }
+
+  /** Kick remaining seats and return to an empty lobby (HTTP/WS stay up). */
+  private resetToLobby(reason: string): void {
+    this.game = null;
+    this.phase = 'lobby';
+    const others = [...this.seats.values()];
+    this.seats.clear();
+    for (const other of others) {
+      this.send(other.ws, { type: 'ended', reason });
+      other.ws.close();
+    }
+  }
+
   private closeRoom(reason: string): void {
+    if (this.persistent) {
+      this.resetToLobby(reason);
+      return;
+    }
     this.phase = 'closed';
     this.game = null;
     const others = [...this.seats.values()];

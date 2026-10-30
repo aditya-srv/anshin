@@ -5,6 +5,7 @@ import { LobbyPlayer, ServerMessage } from './uno/protocol';
 import { RoomClient } from './uno/roomClient';
 import { RoomServer } from './uno/roomServer';
 import { PersonalizedState, UnoCard, UnoColor } from './uno/types';
+import { appendRoomToken, isValidJoinUrl } from './uno/urlAuth';
 
 export type GuiMode = 'ultra' | 'low' | 'high';
 
@@ -28,7 +29,7 @@ interface UiState {
 
 type IncomingMessage =
   | { type: 'ready' }
-  | { type: 'host'; name: string }
+  | { type: 'host'; name: string; remote?: boolean; serverUrl?: string }
   | { type: 'join'; name: string; url: string }
   | { type: 'startGame'; guaranteeSpecial?: boolean; cardsPerPlayer?: number }
   | { type: 'leave' }
@@ -105,7 +106,7 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this._webviewDisposables = [];
   }
 
-  private createMenuState(status = 'Host a room or join with a pasted ws:// address.'): UiState {
+  private createMenuState(status = 'Host locally, or toggle Remote and paste a server Join URL.'): UiState {
     return {
       screen: 'menu',
       guiMode: 'low',
@@ -135,7 +136,10 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         }
         break;
       case 'host':
-        await this.hostRoom(message.name);
+        await this.hostRoom(message.name, {
+          remote: message.remote === true,
+          serverUrl: typeof message.serverUrl === 'string' ? message.serverUrl : '',
+        });
         break;
       case 'join':
         await this.joinRoom(message.name, message.url);
@@ -240,7 +244,10 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     this.postUi();
   }
 
-  private hostRoom(name: string): Promise<void> {
+  private hostRoom(
+    name: string,
+    options: { remote: boolean; serverUrl: string } = { remote: false, serverUrl: '' }
+  ): Promise<void> {
     return this.runExclusive(async () => {
       const trimmed = name.trim().slice(0, 24);
       if (!trimmed) {
@@ -249,8 +256,42 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         return;
       }
 
+      const configured =
+        vscode.workspace.getConfiguration('anshin').get<string>('serverUrl')?.trim() ?? '';
+      const remoteUrl = (options.serverUrl.trim() || configured).trim();
+
       await this.teardownSession();
       const gen = this._sessionGen;
+
+      // Remote: connect only (first seat becomes host). Local: bind RoomServer in-process.
+      if (options.remote) {
+        if (!isValidJoinUrl(remoteUrl)) {
+          const guiMode = this._state.guiMode;
+          this._state = this.createMenuState(
+            'Remote host needs a ws:// or wss:// Join URL with ?t= token'
+          );
+          this._state.guiMode = guiMode;
+          this.postUi();
+          return;
+        }
+
+        this._state.yourName = trimmed;
+        this._state.youAreHost = true;
+        this._state.joinUrl = remoteUrl;
+        this._state.status = 'Connecting to room server…';
+        this.postUi();
+
+        try {
+          await this.connectClient(remoteUrl, trimmed);
+        } catch (err) {
+          if (gen !== this._sessionGen) {
+            return;
+          }
+          const reason = err instanceof Error ? err.message : String(err);
+          await this.teardownSession(`Host failed: ${reason}`);
+        }
+        return;
+      }
 
       try {
         this._server = await RoomServer.start({ port: DEFAULT_UNO_PORT });
@@ -278,8 +319,11 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       this._state.status = 'Hosting… share the join URL.';
       this.postUi();
 
-      // Connect locally via loopback; share LAN URL with joiners.
-      const localUrl = `ws://127.0.0.1:${server.getPort()}`;
+      // Connect locally via loopback with room token; share LAN URL with joiners.
+      const localUrl = appendRoomToken(
+        `ws://127.0.0.1:${server.getPort()}`,
+        server.getRoomToken()
+      );
       try {
         await this.connectClient(localUrl, trimmed);
       } catch (err) {
@@ -301,8 +345,8 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this.postUi();
         return;
       }
-      if (!/^wss?:\/\//i.test(joinUrl)) {
-        this._state.status = 'URL must start with ws:// or wss://';
+      if (!isValidJoinUrl(joinUrl)) {
+        this._state.status = 'URL must be ws:// or wss:// with a host (include ?t= from the host)';
         this.postUi();
         return;
       }
@@ -443,6 +487,8 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     if (!this._view) {
       return;
     }
+    const defaultServerUrl =
+      vscode.workspace.getConfiguration('anshin').get<string>('serverUrl')?.trim() ?? '';
     this._view.webview.postMessage({
       type: 'ui',
       state: {
@@ -457,6 +503,7 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         yourName: this._state.yourName,
         selectedId: this._state.selectedId,
         pendingWildCardId: this._state.pendingWildCardId,
+        defaultServerUrl,
         game: this._state.game
           ? {
               opponents: this._state.game.opponents,
@@ -513,12 +560,20 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       <span>Display name</span>
       <input id="nameInput" type="text" maxlength="24" placeholder="Your name" />
     </label>
+    <div class="host-mode" role="group" aria-label="Host mode">
+      <button type="button" id="hostLocalBtn" class="mode-btn active" data-mode="local">Local</button>
+      <button type="button" id="hostRemoteBtn" class="mode-btn" data-mode="remote">Remote</button>
+    </div>
+    <label id="serverUrlField" class="field hidden">
+      <span>Server Join URL</span>
+      <input id="serverUrlInput" type="text" placeholder="ws://host:3847/?t=…" />
+    </label>
     <div class="row-actions">
       <button id="hostBtn" type="button">Host room</button>
     </div>
     <label class="field">
       <span>Join URL</span>
-      <input id="urlInput" type="text" placeholder="ws://192.168.x.x:3847" />
+      <input id="urlInput" type="text" placeholder="ws://192.168.x.x:3847/?t=…" />
     </label>
     <div class="row-actions">
       <button id="joinBtn" type="button">Join room</button>

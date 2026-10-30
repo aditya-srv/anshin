@@ -10,6 +10,7 @@
   const joinBtn = document.getElementById('joinBtn');
   const menuStatus = document.getElementById('menuStatus');
   const joinUrlDisplay = document.getElementById('joinUrlDisplay');
+  const joinUrlList = document.getElementById('joinUrlList');
   const copyUrlBtn = document.getElementById('copyUrlBtn');
   const lobbyList = document.getElementById('lobbyList');
   const startBtn = document.getElementById('startBtn');
@@ -177,6 +178,7 @@
     if (state.screen === 'lobby') {
       appTitleEl.textContent = ultra ? 'Anshin · lobby' : 'Anshin · UNO · Lobby';
       joinUrlDisplay.textContent = state.joinUrl || '';
+      renderJoinUrls(state.joinUrls, state.joinUrl);
       lobbyStatus.textContent = state.status || '';
       renderUnoSaid(null, ultra);
       startBtn.disabled = !state.youAreHost || !state.canStart;
@@ -278,6 +280,25 @@
       }
     }
     return '…';
+  }
+
+  function renderJoinUrls(joinUrls, primary) {
+    if (!joinUrlList) {
+      return;
+    }
+    joinUrlList.innerHTML = '';
+    const extras = (joinUrls || []).filter(function (url) {
+      return url && url !== primary;
+    });
+    extras.forEach(function (url) {
+      const li = document.createElement('li');
+      const code = document.createElement('code');
+      code.className = 'join-url';
+      code.textContent = url;
+      li.appendChild(code);
+      joinUrlList.appendChild(li);
+    });
+    joinUrlList.classList.toggle('hidden', extras.length === 0);
   }
 
   function renderLobby(players) {

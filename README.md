@@ -41,5 +41,5 @@ npx vsce package --allow-missing-repository
 ## install in cursor
 
 ```bash
-cursor --install-extension anshin-0.0.4.vsix
+cursor --install-extension anshin-0.0.5.vsix
 ```

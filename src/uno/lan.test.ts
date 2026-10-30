@@ -1,6 +1,6 @@
 import assert from 'assert';
 import { describe, it } from 'node:test';
-import { pickLanIPv4 } from './lan';
+import { listLanIPv4, parseDefaultRouteIPv4, pickLanIPv4 } from './lan';
 
 describe('pickLanIPv4', () => {
   it('prefers a physical 192.168 address over virtual 192.168 and 10.x', () => {
@@ -27,6 +27,30 @@ describe('pickLanIPv4', () => {
       { name: 'Loopback Pseudo-Interface', address: '127.0.0.1', internal: true, family: 'IPv4' },
     ]);
     assert.strictEqual(ip, '172.22.48.1');
+  });
+
+  it('accepts a numeric IPv4 family', () => {
+    const ip = pickLanIPv4([{ name: 'Wi-Fi', address: '10.0.0.8', internal: false, family: 4 }]);
+    assert.strictEqual(ip, '10.0.0.8');
+  });
+
+  it('prefers the default-route address over a higher-ranked adapter', () => {
+    const interfaces = [
+      { name: 'Ethernet', address: '192.168.0.5', internal: false, family: 'IPv4' as const },
+      { name: 'Wi-Fi', address: '10.0.0.8', internal: false, family: 4 },
+    ];
+    assert.strictEqual(pickLanIPv4(interfaces, '10.0.0.8'), '10.0.0.8');
+    assert.deepStrictEqual(listLanIPv4(interfaces, '10.0.0.8'), ['10.0.0.8', '192.168.0.5']);
+  });
+
+  it('parses the lowest-metric default route', () => {
+    const text = `
+Active Routes:
+Network Destination        Netmask          Gateway       Interface  Metric
+          0.0.0.0          0.0.0.0      192.168.1.1    192.168.1.20     50
+          0.0.0.0          0.0.0.0         10.0.0.1       10.0.0.8     25
+`;
+    assert.strictEqual(parseDefaultRouteIPv4(text), '10.0.0.8');
   });
 
   it('ignores internal and non-IPv4 entries', () => {

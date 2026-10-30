@@ -21,6 +21,7 @@ export type ServerMessage =
       type: 'lobby';
       players: LobbyPlayer[];
       joinUrl: string;
+      joinUrls?: string[];
       canStart: boolean;
       youAreHost: boolean;
       yourPlayerId: string;

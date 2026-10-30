@@ -679,6 +679,19 @@ button.secondary {
   opacity: 0.75;
 }
 
+.join-url-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.join-url-list .join-url {
+  opacity: 0.85;
+}
+
 .join-url {
   display: block;
   padding: 8px;

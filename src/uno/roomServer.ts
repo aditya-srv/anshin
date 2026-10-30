@@ -9,7 +9,7 @@ import {
   personalize,
   playCard,
 } from './engine';
-import { formatJoinUrl, DEFAULT_UNO_PORT } from './lan';
+import { formatJoinUrls, DEFAULT_UNO_PORT } from './lan';
 import { ClientMessage, LobbyPlayer, parseClientMessage, ServerMessage } from './protocol';
 import { GameSnapshot, UnoColor } from './types';
 
@@ -37,6 +37,7 @@ export class RoomServer {
   private nextId = 1;
   private port = 0;
   private joinUrl = '';
+  private joinUrls: string[] = [];
   private disposed = false;
 
   private constructor(httpServer: http.Server, wss: WebSocketServer) {
@@ -75,7 +76,8 @@ export class RoomServer {
     const room = new RoomServer(httpServer, wss);
     const addr = httpServer.address();
     room.port = typeof addr === 'object' && addr ? addr.port : port;
-    room.joinUrl = formatJoinUrl(room.port);
+    room.joinUrls = formatJoinUrls(room.port);
+    room.joinUrl = room.joinUrls[0] ?? `ws://127.0.0.1:${room.port}`;
     return room;
   }
 
@@ -359,6 +361,7 @@ export class RoomServer {
         type: 'lobby',
         players,
         joinUrl: this.joinUrl,
+        joinUrls: this.joinUrls,
         canStart,
         youAreHost: seat.isHost,
         yourPlayerId: seat.id,

@@ -15,6 +15,7 @@ interface UiState {
   guiMode: GuiMode;
   status: string;
   joinUrl: string;
+  joinUrls: string[];
   lobbyPlayers: LobbyPlayer[];
   canStart: boolean;
   youAreHost: boolean;
@@ -110,6 +111,7 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       guiMode: 'low',
       status,
       joinUrl: '',
+      joinUrls: [],
       lobbyPlayers: [],
       canStart: false,
       youAreHost: false,
@@ -378,11 +380,12 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this._state.screen = 'lobby';
         this._state.lobbyPlayers = msg.players;
         this._state.joinUrl = msg.joinUrl;
+        this._state.joinUrls = msg.joinUrls && msg.joinUrls.length > 0 ? msg.joinUrls : [msg.joinUrl];
         this._state.canStart = msg.canStart;
         this._state.youAreHost = msg.youAreHost;
         this._state.yourPlayerId = msg.yourPlayerId;
         this._state.game = null;
-        this._state.status = lobbyStatus(msg.youAreHost, msg.joinUrl);
+        this._state.status = lobbyStatus(msg.youAreHost, msg.joinUrl, this._state.joinUrls);
         this.postUi();
         break;
       case 'state':
@@ -447,6 +450,7 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         guiMode: this._state.guiMode,
         status: this._state.status,
         joinUrl: this._state.joinUrl,
+        joinUrls: this._state.joinUrls,
         lobbyPlayers: this._state.lobbyPlayers,
         canStart: this._state.canStart,
         youAreHost: this._state.youAreHost,
@@ -525,6 +529,7 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   <section id="lobbyScreen" class="screen hidden">
     <p class="join-url-label">Share this address</p>
     <code id="joinUrlDisplay" class="join-url"></code>
+    <ul id="joinUrlList" class="join-url-list"></ul>
     <button id="copyUrlBtn" type="button" class="secondary">Copy URL</button>
     <h2 class="lobby-heading">Players</h2>
     <ul id="lobbyList" class="lobby-list"></ul>
@@ -618,12 +623,15 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 }
 
-function lobbyStatus(youAreHost: boolean, joinUrl: string): string {
+function lobbyStatus(youAreHost: boolean, joinUrl: string, joinUrls: string[] = []): string {
   if (!youAreHost) {
     return 'Waiting for host to start…';
   }
   if (/127\.0\.0\.1|localhost/i.test(joinUrl)) {
     return `Lobby · only this machine can join (${joinUrl})`;
+  }
+  if (joinUrls.length > 1) {
+    return `Lobby · share ${joinUrl}. If someone cannot connect, try the next address.`;
   }
   return `Lobby · share ${joinUrl}`;
 }

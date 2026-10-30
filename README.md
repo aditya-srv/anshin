@@ -17,7 +17,7 @@ npm install
 4. In the Extension Development Host window, click the **Anshin** icon in the Activity Bar.
 5. Use the sidebar:
    - **Host room** or paste a `ws://` address and **Join room**.
-   - The host shares the join URL and starts once two to four players are in the lobby.
+   - The host shares the join URL and starts once two to six players are in the lobby.
    - On your turn, click a legal card to select it and click again to play it. Wilds ask for a color.
    - **Draw** takes one card from the draw pile (the discard is reshuffled in when the pile runs out) and passes the turn. If nothing is left to draw, the turn passes.
 
@@ -41,5 +41,5 @@ npx vsce package --allow-missing-repository
 ## install in cursor
 
 ```bash
-cursor --install-extension anshin-0.0.3.vsix
+cursor --install-extension anshin-0.0.4.vsix
 ```

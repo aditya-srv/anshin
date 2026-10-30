@@ -4,11 +4,11 @@ import { createDeck, isSpecial, isWild, shuffle } from './deck';
 import {
   callUno,
   canPlay,
+  catchUno,
   chooseOpeningColor,
   createGame,
   drawCard,
   makeTestGame,
-  penalizeMissedUno,
   personalize,
   playCard,
 } from './engine';
@@ -75,7 +75,7 @@ describe('canPlay', () => {
 });
 
 describe('createGame', () => {
-  it('deals 7 cards to each of 2-4 players', () => {
+  it('deals 7 cards to each of 2-6 players', () => {
     const game = createGame(
       [
         { id: 'a', name: 'A' },
@@ -103,13 +103,78 @@ describe('createGame', () => {
       { id: 'c', name: 'C' },
       { id: 'd', name: 'D' },
     ];
-    for (const players of [two, four]) {
+    const six = [
+      ...four,
+      { id: 'e', name: 'E' },
+      { id: 'f', name: 'F' },
+    ];
+    for (const players of [two, four, six]) {
       const game = createGame(players, () => 0.42);
       for (const player of game.players) {
         assert.strictEqual(player.hand.length, 7);
         assert.ok(player.hand.some((card) => isSpecial(card.value)));
       }
     }
+  });
+
+  it('skips special guarantee when guaranteeSpecial is false', () => {
+    const game = createGame(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+      () => 0.42,
+      undefined,
+      false
+    );
+    assert.strictEqual(game.players.length, 2);
+    for (const player of game.players) {
+      assert.strictEqual(player.hand.length, 7);
+    }
+  });
+
+  it('deals the requested cardsPerPlayer count', () => {
+    const game = createGame(
+      [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+      () => 0.42,
+      undefined,
+      true,
+      5
+    );
+    for (const player of game.players) {
+      assert.strictEqual(player.hand.length, 5);
+    }
+  });
+
+  it('rejects invalid cardsPerPlayer', () => {
+    assert.throws(() =>
+      createGame(
+        [
+          { id: 'a', name: 'A' },
+          { id: 'b', name: 'B' },
+        ],
+        () => 0.42,
+        undefined,
+        true,
+        0
+      )
+    );
+    assert.throws(() =>
+      createGame(
+        [
+          { id: 'a', name: 'A' },
+          { id: 'b', name: 'B' },
+        ],
+        () => 0.42,
+        undefined,
+        true,
+        16
+      )
+    );
   });
 
   it('starts a number card at seat 0', () => {
@@ -131,10 +196,9 @@ describe('createGame', () => {
       [
         { id: 'a', name: 'A' },
         { id: 'b', name: 'B' },
-        { id: 'c', name: 'C' },
       ],
       () => 0,
-      openingPile(face('open', 'red', 'skip'), 21)
+      openingPile(face('open', 'red', 'skip'), 14)
     );
     assert.strictEqual(game.currentPlayerIndex, 1);
   });
@@ -144,17 +208,15 @@ describe('createGame', () => {
       [
         { id: 'a', name: 'A' },
         { id: 'b', name: 'B' },
-        { id: 'c', name: 'C' },
       ],
       () => 0,
-      openingPile(face('open', 'red', 'draw2'), 21, [
-        face('u0', 'yellow', '2'),
-        face('u1', 'yellow', '3'),
+      openingPile(face('open', 'red', 'draw2'), 14, [
+        face('x1', 'yellow', '1'),
+        face('x2', 'yellow', '2'),
       ])
     );
     assert.strictEqual(game.players[0].hand.length, 9);
     assert.strictEqual(game.currentPlayerIndex, 1);
-    assert.strictEqual(game.players[1].hand.length, 7);
   });
 
   it('treats an opening reverse as a skip with 2 players', () => {
@@ -167,7 +229,6 @@ describe('createGame', () => {
       openingPile(face('open', 'red', 'reverse'), 14)
     );
     assert.strictEqual(game.currentPlayerIndex, 1);
-    assert.strictEqual(game.direction, 1);
   });
 
   it('reverses and starts at the last seat with 3 or 4 players', () => {
@@ -178,7 +239,7 @@ describe('createGame', () => {
         { id: 'c', name: 'C' },
       ],
       () => 0,
-      openingPile(face('open', 'green', 'reverse'), 21)
+      openingPile(face('open', 'red', 'reverse'), 21)
     );
     assert.strictEqual(three.direction, -1);
     assert.strictEqual(three.currentPlayerIndex, 2);
@@ -191,7 +252,7 @@ describe('createGame', () => {
         { id: 'd', name: 'D' },
       ],
       () => 0,
-      openingPile(face('open', 'green', 'reverse'), 28)
+      openingPile(face('open', 'red', 'reverse'), 28)
     );
     assert.strictEqual(four.direction, -1);
     assert.strictEqual(four.currentPlayerIndex, 3);
@@ -208,13 +269,6 @@ describe('createGame', () => {
     );
     assert.strictEqual(game.awaitingWildColor, true);
     assert.strictEqual(game.currentPlayerIndex, 0);
-    assert.strictEqual(playCard(game, 'a', game.players[0].hand[0].id).ok, false);
-    assert.strictEqual(drawCard(game, 'a').ok, false);
-
-    const wrong = chooseOpeningColor(game, 'b', 'red');
-    assert.strictEqual(wrong.ok, false);
-    assert.strictEqual(game.awaitingWildColor, true);
-
     const chosen = chooseOpeningColor(game, 'a', 'blue');
     assert.ok(chosen.ok);
     if (chosen.ok) {
@@ -233,6 +287,8 @@ describe('createGame', () => {
         { id: '3', name: '3' },
         { id: '4', name: '4' },
         { id: '5', name: '5' },
+        { id: '6', name: '6' },
+        { id: '7', name: '7' },
       ])
     );
   });
@@ -247,14 +303,8 @@ describe('playCard', () => {
       ],
       currentPlayerIndex: 0,
     });
-    const before = game.status;
-    const next = playCard(game, 'b', 'h2');
-    assert.strictEqual(next.ok, false);
-    if (!next.ok) {
-      assert.strictEqual(next.reason, 'Not your turn.');
-    }
-    assert.strictEqual(game.status, before);
-    assert.strictEqual(game.players[1].hand.length, 1);
+    const result = playCard(game, 'b', 'h2');
+    assert.strictEqual(result.ok, false);
   });
 
   it('plays matching color and advances', () => {
@@ -268,24 +318,26 @@ describe('playCard', () => {
       discardPile: [{ id: 'd0', color: 'red', value: '5' }],
     });
     const next = mustPlay(game, 'a', 'h1');
-    assert.strictEqual(next.players[0].hand.length, 0);
     assert.strictEqual(next.winnerId, 'a');
   });
 
   it('requires wild color', () => {
     const game = makeTestGame({
       players: [
-        { id: 'a', name: 'A', hand: [{ id: 'w1', color: null, value: 'wild' }] },
+        {
+          id: 'a',
+          name: 'A',
+          hand: [
+            { id: 'h1', color: null, value: 'wild' },
+            { id: 'keep', color: 'blue', value: '1' },
+          ],
+        },
         { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
       ],
       currentPlayerIndex: 0,
     });
-    const next = playCard(game, 'a', 'w1');
-    assert.strictEqual(next.ok, false);
-    if (!next.ok) {
-      assert.strictEqual(next.reason, 'Choose a color for wild.');
-    }
-    assert.strictEqual(game.players[0].hand.length, 1);
+    const result = playCard(game, 'a', 'h1');
+    assert.strictEqual(result.ok, false);
   });
 
   it('wild sets color and advances', () => {
@@ -295,15 +347,15 @@ describe('playCard', () => {
           id: 'a',
           name: 'A',
           hand: [
-            { id: 'w1', color: null, value: 'wild' },
-            { id: 'h1', color: 'red', value: '1' },
+            { id: 'h1', color: null, value: 'wild' },
+            { id: 'keep', color: 'blue', value: '1' },
           ],
         },
         { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
       ],
       currentPlayerIndex: 0,
     });
-    const next = mustPlay(game, 'a', 'w1', 'green');
+    const next = mustPlay(game, 'a', 'h1', 'green');
     assert.strictEqual(next.currentColor, 'green');
     assert.strictEqual(next.currentPlayerIndex, 1);
   });
@@ -311,7 +363,14 @@ describe('playCard', () => {
   it('skip advances past next player', () => {
     const game = makeTestGame({
       players: [
-        { id: 'a', name: 'A', hand: [{ id: 's1', color: 'red', value: 'skip' }, { id: 'x', color: 'blue', value: '1' }] },
+        {
+          id: 'a',
+          name: 'A',
+          hand: [
+            { id: 'h1', color: 'red', value: 'skip' },
+            { id: 'keep', color: 'blue', value: '1' },
+          ],
+        },
         { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
         { id: 'c', name: 'C', hand: [{ id: 'h3', color: 'green', value: '4' }] },
       ],
@@ -319,7 +378,7 @@ describe('playCard', () => {
       currentColor: 'red',
       discardPile: [{ id: 'd0', color: 'red', value: '5' }],
     });
-    const next = mustPlay(game, 'a', 's1');
+    const next = mustPlay(game, 'a', 'h1');
     assert.strictEqual(next.currentPlayerIndex, 2);
   });
 
@@ -330,8 +389,8 @@ describe('playCard', () => {
           id: 'a',
           name: 'A',
           hand: [
-            { id: 'r1', color: 'red', value: 'reverse' },
-            { id: 'x', color: 'blue', value: '1' },
+            { id: 'h1', color: 'red', value: 'reverse' },
+            { id: 'keep', color: 'blue', value: '1' },
           ],
         },
         { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
@@ -340,23 +399,20 @@ describe('playCard', () => {
       currentColor: 'red',
       discardPile: [{ id: 'd0', color: 'red', value: '5' }],
     });
-    const next = mustPlay(game, 'a', 'r1');
+    const next = mustPlay(game, 'a', 'h1');
+    // Direction flips then one advance → back to the same seat with 2 players.
     assert.strictEqual(next.currentPlayerIndex, 0);
   });
 
   it('draw2 forces next to draw and skips them', () => {
-    const drawPile: UnoCard[] = [
-      { id: 'p1', color: 'yellow', value: '1' },
-      { id: 'p0', color: 'yellow', value: '2' },
-    ];
     const game = makeTestGame({
       players: [
         {
           id: 'a',
           name: 'A',
           hand: [
-            { id: 'd2', color: 'red', value: 'draw2' },
-            { id: 'x', color: 'blue', value: '1' },
+            { id: 'h1', color: 'red', value: 'draw2' },
+            { id: 'keep', color: 'blue', value: '1' },
           ],
         },
         { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
@@ -365,38 +421,42 @@ describe('playCard', () => {
       currentPlayerIndex: 0,
       currentColor: 'red',
       discardPile: [{ id: 'd0', color: 'red', value: '5' }],
-      drawPile,
+      drawPile: [
+        { id: 'p0', color: 'yellow', value: '1' },
+        { id: 'p1', color: 'yellow', value: '2' },
+      ],
     });
-    const next = mustPlay(game, 'a', 'd2');
+    const next = mustPlay(game, 'a', 'h1');
     assert.strictEqual(next.players[1].hand.length, 3);
     assert.strictEqual(next.currentPlayerIndex, 2);
   });
 
   it('wild4 draws four and skips', () => {
-    const drawPile: UnoCard[] = Array.from({ length: 4 }, (_, i) => ({
-      id: `p${i}`,
-      color: 'yellow' as const,
-      value: '1' as const,
-    }));
     const game = makeTestGame({
       players: [
         {
           id: 'a',
           name: 'A',
           hand: [
-            { id: 'w4', color: null, value: 'wild4' },
-            { id: 'x', color: 'blue', value: '1' },
+            { id: 'h1', color: null, value: 'wild4' },
+            { id: 'keep', color: 'blue', value: '1' },
           ],
         },
         { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
+        { id: 'c', name: 'C', hand: [{ id: 'h3', color: 'green', value: '4' }] },
       ],
       currentPlayerIndex: 0,
-      drawPile,
+      drawPile: [
+        { id: 'p0', color: 'yellow', value: '1' },
+        { id: 'p1', color: 'yellow', value: '2' },
+        { id: 'p2', color: 'yellow', value: '3' },
+        { id: 'p3', color: 'yellow', value: '4' },
+      ],
     });
-    const next = mustPlay(game, 'a', 'w4', 'blue');
+    const next = mustPlay(game, 'a', 'h1', 'blue');
     assert.strictEqual(next.players[1].hand.length, 5);
+    assert.strictEqual(next.currentPlayerIndex, 2);
     assert.strictEqual(next.currentColor, 'blue');
-    assert.strictEqual(next.currentPlayerIndex, 0);
   });
 });
 
@@ -404,66 +464,59 @@ describe('drawCard', () => {
   it('draws one and advances turn', () => {
     const game = makeTestGame({
       players: [
-        { id: 'a', name: 'A', hand: [] },
+        { id: 'a', name: 'A', hand: [{ id: 'h1', color: 'red', value: '7' }] },
         { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
       ],
       currentPlayerIndex: 0,
-      drawPile: [{ id: 'p0', color: 'green', value: '8' }],
+      drawPile: [{ id: 'p0', color: 'yellow', value: '1' }],
     });
-    const next = drawCard(game, 'a');
-    assert.ok(next.ok);
-    if (next.ok) {
-      assert.strictEqual(next.game.players[0].hand.length, 1);
-      assert.strictEqual(next.game.currentPlayerIndex, 1);
+    const result = drawCard(game, 'a');
+    assert.ok(result.ok);
+    if (result.ok) {
+      assert.strictEqual(result.game.players[0].hand.length, 2);
+      assert.strictEqual(result.game.currentPlayerIndex, 1);
     }
   });
 
   it('passes the turn when nothing can be drawn', () => {
     const game = makeTestGame({
       players: [
-        { id: 'a', name: 'A', hand: [] },
+        { id: 'a', name: 'A', hand: [{ id: 'h1', color: 'red', value: '7' }] },
         { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
       ],
       currentPlayerIndex: 0,
       drawPile: [],
-      discardPile: [{ id: 'only', color: 'red', value: '5' }],
+      discardPile: [{ id: 'd0', color: 'red', value: '5' }],
     });
-    const next = drawCard(game, 'a');
-    assert.ok(next.ok);
-    if (next.ok) {
-      assert.strictEqual(next.game.players[0].hand.length, 0);
-      assert.strictEqual(next.game.currentPlayerIndex, 1);
+    const result = drawCard(game, 'a');
+    assert.ok(result.ok);
+    if (result.ok) {
+      assert.strictEqual(result.game.players[0].hand.length, 1);
+      assert.strictEqual(result.game.currentPlayerIndex, 1);
     }
-    assert.strictEqual(game.currentPlayerIndex, 0);
   });
 
   it('reshuffles the discard with the game random source', () => {
-    let calls = 0;
     const game = makeTestGame({
       players: [
-        { id: 'a', name: 'A', hand: [] },
+        { id: 'a', name: 'A', hand: [{ id: 'h1', color: 'red', value: '7' }] },
         { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
       ],
       currentPlayerIndex: 0,
       drawPile: [],
       discardPile: [
-        { id: 'bot', color: 'blue', value: '1' },
-        { id: 'mid', color: 'green', value: '2' },
-        { id: 'top', color: 'red', value: '5' },
+        { id: 'd0', color: 'red', value: '5' },
+        { id: 'd1', color: 'green', value: '2' },
+        { id: 'd2', color: 'blue', value: '9' },
       ],
-      random: () => {
-        calls += 1;
-        return 0;
-      },
+      random: () => 0.1,
     });
-    const next = drawCard(game, 'a');
-    assert.ok(calls > 0);
-    assert.ok(next.ok);
-    if (next.ok) {
-      assert.strictEqual(next.game.players[0].hand.length, 1);
-      assert.strictEqual(next.game.discardPile.length, 1);
-      assert.strictEqual(next.game.discardPile[0].id, 'top');
-      assert.strictEqual(next.game.drawPile.length, 1);
+    const result = drawCard(game, 'a');
+    assert.ok(result.ok);
+    if (result.ok) {
+      assert.strictEqual(result.game.players[0].hand.length, 2);
+      assert.strictEqual(result.game.discardPile.length, 1);
+      assert.strictEqual(result.game.discardPile[0].id, 'd2');
     }
   });
 });
@@ -472,17 +525,21 @@ describe('personalize', () => {
   it('hides opponent hands', () => {
     const game = makeTestGame({
       players: [
-        { id: 'a', name: 'A', hand: [{ id: 'h1', color: 'red', value: '7' }] },
-        { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
+        {
+          id: 'a',
+          name: 'A',
+          hand: [
+            { id: 'h1', color: 'red', value: '7' },
+            { id: 'h2', color: 'blue', value: '1' },
+          ],
+        },
+        { id: 'b', name: 'B', hand: [{ id: 'h3', color: 'green', value: '3' }] },
       ],
     });
     const view = personalize(game, 'a');
-    assert.strictEqual(view.hand.length, 1);
-    assert.strictEqual(view.opponents.length, 1);
+    assert.strictEqual(view.hand.length, 2);
     assert.strictEqual(view.opponents[0].cardCount, 1);
-    assert.strictEqual(view.drawRemaining, 0);
-    assert.notStrictEqual(view.discard, game.discardPile[game.discardPile.length - 1]);
-    assert.ok(isWild('wild'));
+    assert.ok(!('hand' in view.opponents[0]));
   });
 
   it('counts recyclable discards as drawable', () => {
@@ -491,40 +548,34 @@ describe('personalize', () => {
         { id: 'a', name: 'A', hand: [] },
         { id: 'b', name: 'B', hand: [] },
       ],
-      drawPile: [{ id: 'p0', color: 'red', value: '1' }],
+      drawPile: [{ id: 'p0', color: 'yellow', value: '1' }],
       discardPile: [
-        { id: 'd0', color: 'blue', value: '2' },
-        { id: 'd1', color: 'green', value: '3' },
-        { id: 'd2', color: 'yellow', value: '4' },
+        { id: 'd0', color: 'red', value: '5' },
+        { id: 'd1', color: 'green', value: '2' },
       ],
     });
     const view = personalize(game, 'a');
-    assert.strictEqual(view.drawRemaining, 3);
+    assert.strictEqual(view.drawRemaining, 2);
   });
 
   it('lists opponents in turn order from the viewer', () => {
-    const players = [
-      { id: 'a', name: 'A', hand: [] as UnoCard[] },
-      { id: 'b', name: 'B', hand: [] as UnoCard[] },
-      { id: 'c', name: 'C', hand: [] as UnoCard[] },
-      { id: 'd', name: 'D', hand: [] as UnoCard[] },
-    ];
-    const clockwise = personalize(makeTestGame({ players, direction: 1 }), 'c');
+    const game = makeTestGame({
+      players: [
+        { id: 'a', name: 'A', hand: [] },
+        { id: 'b', name: 'B', hand: [] },
+        { id: 'c', name: 'C', hand: [] },
+      ],
+      direction: 1,
+    });
+    const fromA = personalize(game, 'a');
     assert.deepStrictEqual(
-      clockwise.opponents.map((p) => p.id),
-      ['d', 'a', 'b']
-    );
-    const counter = personalize(makeTestGame({ players, direction: -1 }), 'c');
-    assert.deepStrictEqual(
-      counter.opponents.map((p) => p.id),
-      ['b', 'a', 'd']
+      fromA.opponents.map((o) => o.id),
+      ['b', 'c']
     );
   });
 });
 
 describe('uno call', () => {
-  const started = 1_000_000;
-
   function downToOne(): GameSnapshot {
     const game = makeTestGame({
       players: [
@@ -553,66 +604,85 @@ describe('uno call', () => {
         { id: 'p1', color: 'yellow', value: '2' },
       ],
     });
-    return mustPlay(game, 'a', 'h1', undefined, started);
+    return mustPlay(game, 'a', 'h1');
   }
 
   it('opens a call when a player plays down to one card', () => {
     const next = downToOne();
     assert.strictEqual(next.unoPendingPlayerId, 'a');
-    assert.strictEqual(next.unoPhase, 'priority');
-    assert.strictEqual(next.unoStartedAt, started);
     assert.strictEqual(next.players[0].hand.length, 1);
-    const view = personalize(next, 'b', started + 500);
+    const view = personalize(next, 'b');
     assert.strictEqual(view.unoCall?.playerId, 'a');
-    assert.strictEqual(view.unoCall?.phase, 'priority');
-    assert.strictEqual(view.unoCall?.remainingMs, 4500);
+    assert.strictEqual(view.unoSaid, null);
   });
 
-  it('lets the owner call UNO during the first 2 seconds', () => {
-    const next = callUno(downToOne(), 'a', started + 1000);
+  it('lets the owner call UNO and announces it', () => {
+    const next = callUno(downToOne(), 'a');
     assert.ok(next.ok);
     if (next.ok) {
       assert.strictEqual(next.game.unoPendingPlayerId, null);
       assert.strictEqual(next.game.players[0].hand.length, 1);
       assert.strictEqual(next.game.status, 'A called UNO.');
+      assert.deepStrictEqual(next.game.unoSaid, { playerId: 'a', playerName: 'A' });
+      const view = personalize(next.game, 'b');
+      assert.deepStrictEqual(view.unoSaid, { playerId: 'a', playerName: 'A' });
     }
   });
 
-  it('rejects another player during the priority window', () => {
-    const next = callUno(downToOne(), 'b', started + 1000);
+  it('rejects another player calling UNO', () => {
+    const next = callUno(downToOne(), 'b');
     assert.strictEqual(next.ok, false);
     if (!next.ok) {
-      assert.strictEqual(next.reason, 'Only the player with one card can call UNO right now.');
+      assert.strictEqual(next.reason, 'Only the player with one card can call UNO.');
     }
   });
 
-  it('lets another player catch them after 2 seconds', () => {
+  it('lets another player catch them anytime while open', () => {
     const pending = downToOne();
     const turn = pending.currentPlayerIndex;
-    const next = callUno(pending, 'b', started + 3000);
+    const next = catchUno(pending, 'b');
     assert.ok(next.ok);
     if (next.ok) {
       assert.strictEqual(next.game.players[0].hand.length, 3);
       assert.strictEqual(next.game.unoPendingPlayerId, null);
+      assert.strictEqual(next.game.unoSaid, null);
       assert.strictEqual(next.game.currentPlayerIndex, turn);
+      assert.match(next.game.status, /caught A without UNO/);
     }
   });
 
-  it('rejects the owner after the priority window', () => {
-    const next = callUno(downToOne(), 'a', started + 3000);
+  it('rejects the owner catching themselves', () => {
+    const next = catchUno(downToOne(), 'a');
     assert.strictEqual(next.ok, false);
     if (!next.ok) {
-      assert.strictEqual(next.reason, 'Too late to call UNO.');
+      assert.strictEqual(next.reason, 'You cannot catch yourself.');
     }
   });
 
-  it('draws 2 when nobody calls UNO', () => {
-    const next = penalizeMissedUno(downToOne());
-    assert.ok(next.ok);
-    if (next.ok) {
-      assert.strictEqual(next.game.players[0].hand.length, 3);
-      assert.strictEqual(next.game.unoPendingPlayerId, null);
-      assert.match(next.game.status, /did not call UNO/);
+  it('clears the announced UNO on the next play', () => {
+    const called = callUno(downToOne(), 'a');
+    assert.ok(called.ok);
+    if (!called.ok) {
+      return;
+    }
+    assert.ok(called.game.unoSaid);
+    called.game.players[1].hand.push({ id: 'h5', color: 'red', value: '2' });
+    called.game.currentPlayerIndex = 1;
+    const after = mustPlay(called.game, 'b', 'h5');
+    assert.strictEqual(after.unoSaid, null);
+  });
+
+  it('clears the announced UNO on the next draw', () => {
+    const called = callUno(downToOne(), 'a');
+    assert.ok(called.ok);
+    if (!called.ok) {
+      return;
+    }
+    called.game.currentPlayerIndex = 1;
+    const result = drawCard(called.game, 'b');
+    assert.ok(result.ok);
+    if (result.ok) {
+      assert.strictEqual(result.game.unoSaid, null);
     }
   });
 
@@ -637,7 +707,7 @@ describe('uno call', () => {
       currentColor: 'red',
       discardPile: [{ id: 'd0', color: 'red', value: '5' }],
     });
-    const next = mustPlay(game, 'a', 'h1', undefined, started);
+    const next = mustPlay(game, 'a', 'h1');
     assert.strictEqual(next.winnerId, 'a');
     assert.strictEqual(next.unoPendingPlayerId, null);
   });

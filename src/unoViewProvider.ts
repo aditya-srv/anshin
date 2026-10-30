@@ -29,7 +29,7 @@ type IncomingMessage =
   | { type: 'ready' }
   | { type: 'host'; name: string }
   | { type: 'join'; name: string; url: string }
-  | { type: 'startGame' }
+  | { type: 'startGame'; guaranteeSpecial?: boolean; cardsPerPlayer?: number }
   | { type: 'leave' }
   | { type: 'select'; cardId: string }
   | { type: 'play'; cardId: string; wildColor?: UnoColor }
@@ -37,6 +37,7 @@ type IncomingMessage =
   | { type: 'cancelWild' }
   | { type: 'draw' }
   | { type: 'callUno' }
+  | { type: 'catchUno' }
   | { type: 'copyJoinUrl' }
   | { type: 'setGuiMode'; mode: GuiMode };
 
@@ -137,9 +138,15 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       case 'join':
         await this.joinRoom(message.name, message.url);
         break;
-      case 'startGame':
-        this._client?.start();
+      case 'startGame': {
+        const cards =
+          typeof message.cardsPerPlayer === 'number' &&
+          Number.isInteger(message.cardsPerPlayer)
+            ? message.cardsPerPlayer
+            : 7;
+        this._client?.start(message.guaranteeSpecial !== false, cards);
         break;
+      }
       case 'leave':
         await this.runExclusive(() => this.teardownSession('Left the room.'));
         break;
@@ -180,6 +187,9 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         break;
       case 'callUno':
         this._client?.callUno();
+        break;
+      case 'catchUno':
+        this._client?.catchUno();
         break;
     }
   }
@@ -457,6 +467,7 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
               playerCount: this._state.game.playerCount,
               awaitingWildColor: this._state.game.awaitingWildColor,
               unoCall: this._state.game.unoCall,
+              unoSaid: this._state.game.unoSaid,
               hand: playableHand(this._state.game),
             }
           : null,
@@ -517,6 +528,18 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     <button id="copyUrlBtn" type="button" class="secondary">Copy URL</button>
     <h2 class="lobby-heading">Players</h2>
     <ul id="lobbyList" class="lobby-list"></ul>
+    <div id="hostOpts" class="host-only hidden">
+      <label class="field">
+        <span>Cards each</span>
+        <input id="cardsPerPlayerInput" type="number" min="1" max="15" value="7" />
+      </label>
+      <label class="field">
+        <span class="check-row">
+          <input id="guaranteeSpecialInput" type="checkbox" checked />
+          1 special card each
+        </span>
+      </label>
+    </div>
     <div class="row-actions">
       <button id="startBtn" type="button">Start game</button>
       <button id="leaveLobbyBtn" type="button" class="secondary">Leave</button>
@@ -525,51 +548,68 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   </section>
 
   <section id="gameScreen" class="screen hidden">
-    <div class="table">
-      <section class="seat seat-top hidden" data-seat-slot="0">
-        <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
-        <div class="seat-cards row center"></div>
-      </section>
+    <div class="game-scroll">
+      <div class="table">
+        <div class="table-top">
+          <section class="seat seat-top hidden" data-seat-slot="0">
+            <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
+            <div class="seat-cards row center"></div>
+          </section>
+          <section class="seat seat-top hidden" data-seat-slot="1">
+            <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
+            <div class="seat-cards row center"></div>
+          </section>
+          <section class="seat seat-top hidden" data-seat-slot="2">
+            <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
+            <div class="seat-cards row center"></div>
+          </section>
+        </div>
 
-      <div class="table-mid">
-        <section class="seat seat-left hidden" data-seat-slot="1">
-          <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
-          <div class="seat-cards row"></div>
-        </section>
+        <div class="table-mid">
+          <section class="seat seat-left hidden" data-seat-slot="3">
+            <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
+            <div class="seat-cards row"></div>
+          </section>
 
-        <section class="section discard-section">
-          <h2 id="discardLabel">Discard</h2>
-          <div id="discard" class="row center"></div>
-          <p id="colorLine" class="color-line"></p>
-        </section>
+          <section class="section discard-section">
+            <h2 id="discardLabel">Discard</h2>
+            <div id="discard" class="row center"></div>
+            <p id="unoSaidLine" class="uno-said hidden"></p>
+            <p id="colorLine" class="color-line"></p>
+          </section>
 
-        <section class="seat seat-right hidden" data-seat-slot="2">
-          <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
-          <div class="seat-cards row"></div>
+          <section class="seat seat-right hidden" data-seat-slot="4">
+            <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
+            <div class="seat-cards row"></div>
+          </section>
+        </div>
+
+        <section class="seat seat-you">
+          <div class="seat-label"><span class="seat-name" id="youLabel">You</span><span id="youCount" class="seat-count"></span></div>
+          <div id="hand" class="row wrap"></div>
         </section>
       </div>
 
-      <section class="seat seat-you">
-        <div class="seat-label"><span class="seat-name" id="youLabel">You</span><span id="youCount" class="seat-count"></span></div>
-        <div id="hand" class="row wrap"></div>
+      <div id="wildPicker" class="wild-picker hidden">
+        <span>Choose color</span>
+        <button type="button" class="wild-color red" data-color="red">R</button>
+        <button type="button" class="wild-color yellow" data-color="yellow">Y</button>
+        <button type="button" class="wild-color green" data-color="green">G</button>
+        <button type="button" class="wild-color blue" data-color="blue">B</button>
+        <button type="button" id="cancelWildBtn" class="secondary">Cancel</button>
+      </div>
+
+      <section class="section actions">
+        <button id="drawBtn" type="button">Draw</button>
+        <button id="leaveGameBtn" type="button" class="secondary">Leave</button>
+        <p id="status" class="status"></p>
       </section>
     </div>
 
-    <div id="wildPicker" class="wild-picker hidden">
-      <span>Choose color</span>
-      <button type="button" class="wild-color red" data-color="red">R</button>
-      <button type="button" class="wild-color yellow" data-color="yellow">Y</button>
-      <button type="button" class="wild-color green" data-color="green">G</button>
-      <button type="button" class="wild-color blue" data-color="blue">B</button>
-      <button type="button" id="cancelWildBtn" class="secondary">Cancel</button>
+    <div class="uno-dock-bar hidden">
+      <button id="unoBtn" type="button" class="uno-dock">UNO</button>
+      <button id="catchBtn" type="button" class="catch-dock">Catch</button>
     </div>
-
-    <section class="section actions">
-      <button id="unoBtn" type="button" class="hidden">UNO</button>
-      <button id="drawBtn" type="button">Draw</button>
-      <button id="leaveGameBtn" type="button" class="secondary">Leave</button>
-      <p id="status" class="status"></p>
-    </section>
   </section>
 
   <script nonce="${nonce}" src="${scriptUri}"></script>

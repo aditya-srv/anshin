@@ -95,8 +95,8 @@ export class RoomClient {
     this.send({ type: 'join', name });
   }
 
-  start(): void {
-    this.send({ type: 'start' });
+  start(guaranteeSpecial = true, cardsPerPlayer = 7): void {
+    this.send({ type: 'start', guaranteeSpecial, cardsPerPlayer });
   }
 
   play(cardId: string, wildColor?: UnoColor): void {
@@ -113,6 +113,10 @@ export class RoomClient {
 
   callUno(): void {
     this.send({ type: 'uno' });
+  }
+
+  catchUno(): void {
+    this.send({ type: 'catch' });
   }
 
   leave(): void {

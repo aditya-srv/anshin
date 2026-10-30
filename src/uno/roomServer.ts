@@ -1,14 +1,11 @@
 import * as http from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import {
-  UNO_PRIORITY_MS,
-  UNO_TOTAL_MS,
   callUno,
+  catchUno,
   chooseOpeningColor,
   createGame,
   drawCard,
-  openUnoCatch,
-  penalizeMissedUno,
   personalize,
   playCard,
 } from './engine';
@@ -41,7 +38,6 @@ export class RoomServer {
   private port = 0;
   private joinUrl = '';
   private disposed = false;
-  private unoTimers: ReturnType<typeof setTimeout>[] = [];
 
   private constructor(httpServer: http.Server, wss: WebSocketServer) {
     this.httpServer = httpServer;
@@ -98,7 +94,6 @@ export class RoomServer {
     this.disposed = true;
     this.phase = 'closed';
     this.game = null;
-    this.clearUnoTimers();
 
     const seats = [...this.seats.values()];
     this.seats.clear();
@@ -146,7 +141,7 @@ export class RoomServer {
         this.handleJoin(ws, msg.name);
         break;
       case 'start':
-        this.handleStart(ws);
+        this.handleStart(ws, msg.guaranteeSpecial, msg.cardsPerPlayer);
         break;
       case 'play':
         this.handlePlay(ws, msg.cardId, msg.wildColor);
@@ -159,6 +154,9 @@ export class RoomServer {
         break;
       case 'uno':
         this.handleUno(ws);
+        break;
+      case 'catch':
+        this.handleCatch(ws);
         break;
       case 'leave':
         ws.close();
@@ -181,8 +179,8 @@ export class RoomServer {
       this.send(ws, { type: 'error', reason: 'Already joined.' });
       return;
     }
-    if (this.seats.size >= 4) {
-      this.send(ws, { type: 'error', reason: 'Room is full (max 4).' });
+    if (this.seats.size >= 6) {
+      this.send(ws, { type: 'error', reason: 'Room is full (max 6).' });
       ws.close();
       return;
     }
@@ -193,7 +191,11 @@ export class RoomServer {
     this.broadcastLobby();
   }
 
-  private handleStart(ws: WebSocket): void {
+  private handleStart(
+    ws: WebSocket,
+    guaranteeSpecial = true,
+    cardsPerPlayer = 7
+  ): void {
     const seat = this.seats.get(ws);
     if (!seat) {
       this.send(ws, { type: 'error', reason: 'Join first.' });
@@ -213,7 +215,13 @@ export class RoomServer {
     }
 
     const players = [...this.seats.values()].map((s) => ({ id: s.id, name: s.name }));
-    this.game = createGame(players);
+    this.game = createGame(
+      players,
+      Math.random,
+      undefined,
+      guaranteeSpecial,
+      cardsPerPlayer
+    );
     this.phase = 'playing';
     this.broadcastGame();
   }
@@ -233,11 +241,9 @@ export class RoomServer {
     this.game = result.game;
     if (this.game.winnerId) {
       this.phase = 'finished';
-      this.clearUnoTimers();
       this.broadcastGameOver();
       return;
     }
-    this.syncUnoTimers();
     this.broadcastGame();
   }
 
@@ -254,7 +260,6 @@ export class RoomServer {
       return;
     }
     this.game = result.game;
-    this.syncUnoTimers();
     this.broadcastGame();
   }
 
@@ -265,13 +270,28 @@ export class RoomServer {
       return;
     }
 
-    const result = callUno(this.game, seat.id, Date.now());
+    const result = callUno(this.game, seat.id);
     if (!result.ok) {
       this.send(ws, { type: 'error', reason: result.reason });
       return;
     }
     this.game = result.game;
-    this.syncUnoTimers();
+    this.broadcastGame();
+  }
+
+  private handleCatch(ws: WebSocket): void {
+    const seat = this.seats.get(ws);
+    if (!seat || !this.game || this.phase !== 'playing') {
+      this.send(ws, { type: 'error', reason: 'No active game.' });
+      return;
+    }
+
+    const result = catchUno(this.game, seat.id);
+    if (!result.ok) {
+      this.send(ws, { type: 'error', reason: result.reason });
+      return;
+    }
+    this.game = result.game;
     this.broadcastGame();
   }
 
@@ -288,59 +308,7 @@ export class RoomServer {
       return;
     }
     this.game = result.game;
-    this.syncUnoTimers();
     this.broadcastGame();
-  }
-
-  private syncUnoTimers(): void {
-    this.clearUnoTimers();
-    const game = this.game;
-    if (!game || !game.unoPendingPlayerId || this.phase !== 'playing') {
-      return;
-    }
-    const playerId = game.unoPendingPlayerId;
-    const startedAt = game.unoStartedAt;
-    const elapsed = Date.now() - startedAt;
-    const toCatch = Math.max(0, UNO_PRIORITY_MS - elapsed);
-    const toPenalty = Math.max(0, UNO_TOTAL_MS - elapsed);
-    this.unoTimers.push(setTimeout(() => this.enterUnoCatch(playerId, startedAt), toCatch));
-    this.unoTimers.push(setTimeout(() => this.expireUno(playerId, startedAt), toPenalty));
-  }
-
-  private enterUnoCatch(playerId: string, startedAt: number): void {
-    if (!this.sameUnoCall(playerId, startedAt) || !this.game) {
-      return;
-    }
-    this.game = openUnoCatch(this.game);
-    this.broadcastGame();
-  }
-
-  private expireUno(playerId: string, startedAt: number): void {
-    if (!this.sameUnoCall(playerId, startedAt) || !this.game) {
-      return;
-    }
-    const result = penalizeMissedUno(this.game);
-    if (result.ok) {
-      this.game = result.game;
-    }
-    this.clearUnoTimers();
-    this.broadcastGame();
-  }
-
-  private sameUnoCall(playerId: string, startedAt: number): boolean {
-    return (
-      this.phase === 'playing' &&
-      !!this.game &&
-      this.game.unoPendingPlayerId === playerId &&
-      this.game.unoStartedAt === startedAt
-    );
-  }
-
-  private clearUnoTimers(): void {
-    for (const timer of this.unoTimers) {
-      clearTimeout(timer);
-    }
-    this.unoTimers = [];
   }
 
   private handleDisconnect(ws: WebSocket): void {
@@ -370,7 +338,6 @@ export class RoomServer {
   private closeRoom(reason: string): void {
     this.phase = 'closed';
     this.game = null;
-    this.clearUnoTimers();
     const others = [...this.seats.values()];
     this.seats.clear();
     for (const other of others) {
@@ -385,7 +352,7 @@ export class RoomServer {
       name: s.name,
       isHost: s.isHost,
     }));
-    const canStart = this.seats.size >= 2 && this.seats.size <= 4;
+    const canStart = this.seats.size >= 2 && this.seats.size <= 6;
 
     for (const seat of this.seats.values()) {
       const msg: ServerMessage = {

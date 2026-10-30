@@ -13,6 +13,11 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
   padding: 10px;
@@ -20,6 +25,10 @@ body {
   font-size: var(--vscode-font-size);
   color: var(--vscode-foreground);
   background: var(--vscode-sideBar-background);
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  overflow: hidden;
 }
 
 .topbar {
@@ -28,6 +37,7 @@ body {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .title {
@@ -75,6 +85,20 @@ body {
   flex-direction: column;
   gap: 10px;
   margin-bottom: 12px;
+}
+
+.table-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.table-top .seat {
+  flex: 1 1 0;
+  min-width: 56px;
+  max-width: 96px;
 }
 
 .table-mid {
@@ -445,19 +469,22 @@ body.gui-high .card.hand.selected {
   gap: 8px;
 }
 
-button#unoBtn {
-  align-self: stretch;
-  padding: 6px 10px;
+button#unoBtn,
+button#catchBtn {
+  align-self: flex-start;
+  padding: 2px 6px;
   border: 1px solid var(--vscode-button-border, transparent);
   border-radius: 2px;
-  background: #c62828;
-  color: #fff;
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.25));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
   font: inherit;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
 }
 
-button#unoBtn:disabled {
+button#unoBtn:disabled,
+button#catchBtn:disabled {
   opacity: 0.45;
   cursor: default;
 }
@@ -500,6 +527,66 @@ button#drawBtn:disabled {
   gap: 10px;
 }
 
+#menuScreen,
+#lobbyScreen,
+#gameScreen {
+  flex: 1;
+  min-height: 0;
+}
+
+#menuScreen,
+#lobbyScreen {
+  overflow-y: auto;
+}
+
+#gameScreen {
+  overflow: hidden;
+  gap: 8px;
+}
+
+#gameScreen .game-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#gameScreen .table {
+  margin-bottom: 0;
+}
+
+.uno-dock-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+button#unoBtn.uno-dock,
+button#catchBtn.catch-dock {
+  flex-shrink: 0;
+  align-self: auto;
+}
+
+.uno-said {
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+  text-align: center;
+}
+
+body.gui-ultra .uno-said {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-weight: 400;
+  opacity: 0.7;
+  letter-spacing: 0;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -511,7 +598,8 @@ button#drawBtn:disabled {
   opacity: 0.85;
 }
 
-.field input {
+.field input[type='text'],
+.field input[type='number'] {
   padding: 6px 8px;
   border: 1px solid var(--card-border);
   border-radius: 2px;
@@ -522,6 +610,28 @@ button#drawBtn:disabled {
   text-transform: none;
   letter-spacing: 0;
   font-weight: 400;
+}
+
+.host-only {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.check-row input[type='checkbox'] {
+  margin: 0;
+  cursor: pointer;
 }
 
 .row-actions {
@@ -605,21 +715,24 @@ button.secondary {
   opacity: 0.75;
 }
 
-.your-turn .seat-name {
-  color: var(--vscode-focusBorder, var(--vscode-foreground));
+.seat.your-turn .seat-label {
+  opacity: 0.9;
 }
 
 .seat.your-turn .seat-cards,
 .seat.your-turn #hand {
-  outline: 1px solid rgba(255, 255, 255, 0.45);
-  outline-offset: 3px;
+  outline: 1px solid rgba(255, 255, 255, 0.18);
+  outline-offset: 1px;
   border-radius: 4px;
 }
 
 body.gui-ultra .seat.your-turn {
-  outline: 1px solid rgba(255, 255, 255, 0.45);
-  outline-offset: 2px;
-  border-radius: 2px;
+  outline: none;
+}
+
+body.gui-ultra .seat.your-turn .seat-label {
+  opacity: 0.85;
+  font-weight: 500;
 }
 
 body.gui-ultra .seat.your-turn .seat-cards,
@@ -680,7 +793,6 @@ body.gui-high .card.wild {
   gap: 8px;
 }
 
-.actions #unoBtn,
 .actions #drawBtn,
 .actions #leaveGameBtn {
   align-self: stretch;

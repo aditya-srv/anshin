@@ -2,11 +2,12 @@ import { PersonalizedState, UnoColor } from './types';
 
 export type ClientMessage =
   | { type: 'join'; name: string }
-  | { type: 'start' }
+  | { type: 'start'; guaranteeSpecial?: boolean; cardsPerPlayer?: number }
   | { type: 'play'; cardId: string; wildColor?: UnoColor }
   | { type: 'draw' }
   | { type: 'chooseColor'; color: UnoColor }
   | { type: 'uno' }
+  | { type: 'catch' }
   | { type: 'leave' };
 
 export interface LobbyPlayer {
@@ -62,8 +63,29 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       }
       return { type: 'join', name: name.trim().slice(0, 24) };
     }
-    case 'start':
-      return { type: 'start' };
+    case 'start': {
+      const raw = data as { guaranteeSpecial?: unknown; cardsPerPlayer?: unknown };
+      let guaranteeSpecial = true;
+      if (raw.guaranteeSpecial !== undefined) {
+        if (typeof raw.guaranteeSpecial !== 'boolean') {
+          return null;
+        }
+        guaranteeSpecial = raw.guaranteeSpecial;
+      }
+      let cardsPerPlayer = 7;
+      if (raw.cardsPerPlayer !== undefined) {
+        if (
+          typeof raw.cardsPerPlayer !== 'number' ||
+          !Number.isInteger(raw.cardsPerPlayer) ||
+          raw.cardsPerPlayer < 1 ||
+          raw.cardsPerPlayer > 15
+        ) {
+          return null;
+        }
+        cardsPerPlayer = raw.cardsPerPlayer;
+      }
+      return { type: 'start', guaranteeSpecial, cardsPerPlayer };
+    }
     case 'play': {
       const cardId = (data as { cardId?: unknown }).cardId;
       const wildColor = (data as { wildColor?: unknown }).wildColor;
@@ -97,6 +119,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     }
     case 'uno':
       return { type: 'uno' };
+    case 'catch':
+      return { type: 'catch' };
     case 'leave':
       return { type: 'leave' };
     default:

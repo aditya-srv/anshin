@@ -7,10 +7,12 @@ import {
   UnoCall,
   UnoCard,
   UnoColor,
+  UnoSaid,
 } from './types';
 
-export const UNO_PRIORITY_MS = 2000;
-export const UNO_TOTAL_MS = 5000;
+export const DEFAULT_CARDS_PER_PLAYER = 7;
+export const MIN_CARDS_PER_PLAYER = 1;
+export const MAX_CARDS_PER_PLAYER = 15;
 
 export type ActionResult =
   | { ok: true; game: GameSnapshot }
@@ -33,10 +35,21 @@ export function createGame(
   players: { id: string; name: string }[],
   random: () => number = Math.random,
   /** Pre-ordered draw pile (top = last item). Tests use this to force the opening card. */
-  deck?: UnoCard[]
+  deck?: UnoCard[],
+  guaranteeSpecial = true,
+  cardsPerPlayer = DEFAULT_CARDS_PER_PLAYER
 ): GameSnapshot {
-  if (players.length < 2 || players.length > 4) {
-    throw new Error('UNO requires 2 to 4 players');
+  if (players.length < 2 || players.length > 6) {
+    throw new Error('UNO requires 2 to 6 players');
+  }
+  if (
+    !Number.isInteger(cardsPerPlayer) ||
+    cardsPerPlayer < MIN_CARDS_PER_PLAYER ||
+    cardsPerPlayer > MAX_CARDS_PER_PLAYER
+  ) {
+    throw new Error(
+      `Cards per player must be ${MIN_CARDS_PER_PLAYER}-${MAX_CARDS_PER_PLAYER}`
+    );
   }
 
   const drawPile = deck ? deck.slice() : shuffle(createDeck(), random);
@@ -46,7 +59,12 @@ export function createGame(
     hand: [] as UnoCard[],
   }));
 
-  for (let round = 0; round < 7; round++) {
+  const needed = cardsPerPlayer * players.length + 1;
+  if (drawPile.length < needed) {
+    throw new Error('Not enough cards to deal');
+  }
+
+  for (let round = 0; round < cardsPerPlayer; round++) {
     for (const seat of seats) {
       const card = drawPile.pop();
       if (!card) {
@@ -56,7 +74,7 @@ export function createGame(
     }
   }
 
-  if (!deck) {
+  if (!deck && guaranteeSpecial) {
     ensureOpeningSpecial(seats, drawPile, random);
   }
 
@@ -91,8 +109,7 @@ export function createGame(
     status: '',
     awaitingWildColor: false,
     unoPendingPlayerId: null,
-    unoPhase: null,
-    unoStartedAt: 0,
+    unoSaid: null,
     random,
   };
 
@@ -212,6 +229,8 @@ export function playCard(
     next.currentColor = card.color as UnoColor;
   }
 
+  clearUnoSaid(next);
+
   if (nextPlayer.hand.length === 0) {
     clearUnoCall(next);
     next.winnerId = playerId;
@@ -225,7 +244,7 @@ export function playCard(
   next.status = `${nextPlayer.name} played ${label}. ${turnName}'s turn.`;
   releaseUnoIfHandChanged(next);
   if (nextPlayer.hand.length === 1) {
-    openUnoCall(next, playerId, now);
+    openUnoCall(next, playerId);
   }
   return { ok: true, game: next };
 }
@@ -247,6 +266,7 @@ export function drawCard(game: GameSnapshot, playerId: string): ActionResult {
   }
 
   const next = cloneGame(game);
+  clearUnoSaid(next);
   const drawn = takeFromDraw(next, 1);
   const actor = next.players[playerIndex].name;
   if (drawn.length === 0) {
@@ -265,52 +285,43 @@ export function drawCard(game: GameSnapshot, playerId: string): ActionResult {
   return { ok: true, game: next };
 }
 
-export function callUno(game: GameSnapshot, callerId: string, now: number = Date.now()): ActionResult {
+/** Player with one card announces UNO. */
+export function callUno(game: GameSnapshot, callerId: string): ActionResult {
   if (!game.unoPendingPlayerId) {
     return { ok: false, reason: 'No UNO call is open.' };
+  }
+  if (callerId !== game.unoPendingPlayerId) {
+    return { ok: false, reason: 'Only the player with one card can call UNO.' };
+  }
+  const caller = game.players.find((p) => p.id === callerId);
+  if (!caller) {
+    return { ok: false, reason: 'Unknown player.' };
+  }
+  if (caller.hand.length !== 1) {
+    return { ok: false, reason: 'No UNO call is open.' };
+  }
+
+  const next = cloneGame(game);
+  const name = next.players.find((p) => p.id === callerId)?.name ?? caller.name;
+  clearUnoCall(next);
+  next.unoSaid = { playerId: callerId, playerName: name };
+  next.status = `${name} called UNO.`;
+  return { ok: true, game: next };
+}
+
+/** Another player catches someone who forgot to call UNO. */
+export function catchUno(game: GameSnapshot, callerId: string): ActionResult {
+  if (!game.unoPendingPlayerId) {
+    return { ok: false, reason: 'No UNO call is open.' };
+  }
+  if (callerId === game.unoPendingPlayerId) {
+    return { ok: false, reason: 'You cannot catch yourself.' };
   }
   const caller = game.players.find((p) => p.id === callerId);
   if (!caller) {
     return { ok: false, reason: 'Unknown player.' };
   }
 
-  const elapsed = now - game.unoStartedAt;
-  if (elapsed >= UNO_TOTAL_MS) {
-    return { ok: false, reason: 'UNO call already expired.' };
-  }
-
-  if (elapsed < UNO_PRIORITY_MS) {
-    if (callerId !== game.unoPendingPlayerId) {
-      return { ok: false, reason: 'Only the player with one card can call UNO right now.' };
-    }
-    const next = cloneGame(game);
-    const name = next.players.find((p) => p.id === callerId)?.name ?? caller.name;
-    clearUnoCall(next);
-    next.status = `${name} called UNO.`;
-    return { ok: true, game: next };
-  }
-
-  if (callerId === game.unoPendingPlayerId) {
-    return { ok: false, reason: 'Too late to call UNO.' };
-  }
-
-  const next = cloneGame(game);
-  const pending = next.players.find((p) => p.id === next.unoPendingPlayerId);
-  if (!pending) {
-    clearUnoCall(next);
-    return { ok: true, game: next };
-  }
-  const drawn = takeFromDraw(next, 2);
-  pending.hand.push(...drawn);
-  clearUnoCall(next);
-  next.status = `${caller.name} caught ${pending.name} without UNO. ${pending.name} draws ${drawn.length}.`;
-  return { ok: true, game: next };
-}
-
-export function penalizeMissedUno(game: GameSnapshot): ActionResult {
-  if (!game.unoPendingPlayerId) {
-    return { ok: false, reason: 'No UNO call is open.' };
-  }
   const next = cloneGame(game);
   const pending = next.players.find((p) => p.id === next.unoPendingPlayerId);
   if (!pending || pending.hand.length !== 1) {
@@ -320,18 +331,8 @@ export function penalizeMissedUno(game: GameSnapshot): ActionResult {
   const drawn = takeFromDraw(next, 2);
   pending.hand.push(...drawn);
   clearUnoCall(next);
-  next.status = `${pending.name} did not call UNO and draws ${drawn.length}.`;
+  next.status = `${caller.name} caught ${pending.name} without UNO. ${pending.name} draws ${drawn.length}.`;
   return { ok: true, game: next };
-}
-
-/** Moves a priority call into the catch window. No-op unless a call is open. */
-export function openUnoCatch(game: GameSnapshot): GameSnapshot {
-  if (!game.unoPendingPlayerId || game.unoPhase !== 'priority') {
-    return game;
-  }
-  const next = cloneGame(game);
-  next.unoPhase = 'catch';
-  return next;
 }
 
 export function personalize(
@@ -372,7 +373,8 @@ export function personalize(
     winnerId: game.winnerId,
     playerCount: game.players.length,
     awaitingWildColor: game.awaitingWildColor,
-    unoCall: unoCallView(game, now),
+    unoCall: unoCallView(game),
+    unoSaid: game.unoSaid ? { ...game.unoSaid } : null,
   };
 }
 
@@ -516,22 +518,21 @@ function cloneGame(game: GameSnapshot): GameSnapshot {
     status: game.status,
     awaitingWildColor: game.awaitingWildColor,
     unoPendingPlayerId: game.unoPendingPlayerId,
-    unoPhase: game.unoPhase,
-    unoStartedAt: game.unoStartedAt,
+    unoSaid: game.unoSaid ? { ...game.unoSaid } : null,
     random: game.random,
   };
 }
 
-function openUnoCall(game: GameSnapshot, playerId: string, now: number): void {
+function openUnoCall(game: GameSnapshot, playerId: string): void {
   game.unoPendingPlayerId = playerId;
-  game.unoPhase = 'priority';
-  game.unoStartedAt = now;
 }
 
 function clearUnoCall(game: GameSnapshot): void {
   game.unoPendingPlayerId = null;
-  game.unoPhase = null;
-  game.unoStartedAt = 0;
+}
+
+function clearUnoSaid(game: GameSnapshot): void {
+  game.unoSaid = null;
 }
 
 function releaseUnoIfHandChanged(game: GameSnapshot): void {
@@ -544,19 +545,17 @@ function releaseUnoIfHandChanged(game: GameSnapshot): void {
   }
 }
 
-function unoCallView(game: GameSnapshot, now: number): UnoCall | null {
-  if (!game.unoPendingPlayerId || !game.unoPhase) {
+function unoCallView(game: GameSnapshot): UnoCall | null {
+  if (!game.unoPendingPlayerId) {
     return null;
   }
   const player = game.players.find((p) => p.id === game.unoPendingPlayerId);
-  if (!player) {
+  if (!player || player.hand.length !== 1) {
     return null;
   }
   return {
     playerId: player.id,
     playerName: player.name,
-    phase: game.unoPhase,
-    remainingMs: Math.max(0, game.unoStartedAt + UNO_TOTAL_MS - now),
   };
 }
 
@@ -593,8 +592,7 @@ export function makeTestGame(partial: Partial<GameSnapshot> & { players: PlayerS
     status: '',
     awaitingWildColor: false,
     unoPendingPlayerId: null,
-    unoPhase: null,
-    unoStartedAt: 0,
+    unoSaid: null as UnoSaid | null,
     random: Math.random,
     ...partial,
   };

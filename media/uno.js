@@ -13,6 +13,9 @@
   const copyUrlBtn = document.getElementById('copyUrlBtn');
   const lobbyList = document.getElementById('lobbyList');
   const startBtn = document.getElementById('startBtn');
+  const hostOpts = document.getElementById('hostOpts');
+  const cardsPerPlayerInput = document.getElementById('cardsPerPlayerInput');
+  const guaranteeSpecialInput = document.getElementById('guaranteeSpecialInput');
   const leaveLobbyBtn = document.getElementById('leaveLobbyBtn');
   const lobbyStatus = document.getElementById('lobbyStatus');
   const discardEl = document.getElementById('discard');
@@ -22,8 +25,11 @@
   const youLabelEl = document.getElementById('youLabel');
   const discardLabelEl = document.getElementById('discardLabel');
   const colorLineEl = document.getElementById('colorLine');
+  const unoSaidLineEl = document.getElementById('unoSaidLine');
   const appTitleEl = document.getElementById('appTitle');
   const unoBtn = document.getElementById('unoBtn');
+  const catchBtn = document.getElementById('catchBtn');
+  const unoDockBar = document.querySelector('.uno-dock-bar');
   const drawBtn = document.getElementById('drawBtn');
   const leaveGameBtn = document.getElementById('leaveGameBtn');
   const wildPicker = document.getElementById('wildPicker');
@@ -31,11 +37,14 @@
   const guiUltraBtn = document.getElementById('guiUltraBtn');
   const guiLowBtn = document.getElementById('guiLowBtn');
   const guiHighBtn = document.getElementById('guiHighBtn');
-  const seatSlots = [
-    document.querySelector('[data-seat-slot="0"]'),
-    document.querySelector('[data-seat-slot="1"]'),
-    document.querySelector('[data-seat-slot="2"]'),
-  ];
+  const seatSlots = Array.prototype.slice
+    .call(document.querySelectorAll('[data-seat-slot]'))
+    .sort(function (a, b) {
+      return (
+        Number(a.getAttribute('data-seat-slot')) -
+        Number(b.getAttribute('data-seat-slot'))
+      );
+    });
 
   hostBtn.addEventListener('click', function () {
     vscode.postMessage({ type: 'host', name: nameInput.value });
@@ -46,7 +55,19 @@
   });
 
   startBtn.addEventListener('click', function () {
-    vscode.postMessage({ type: 'startGame' });
+    var cards = 7;
+    if (cardsPerPlayerInput) {
+      var parsed = parseInt(cardsPerPlayerInput.value, 10);
+      if (!isNaN(parsed)) {
+        cards = Math.min(15, Math.max(1, parsed));
+      }
+      cardsPerPlayerInput.value = String(cards);
+    }
+    vscode.postMessage({
+      type: 'startGame',
+      guaranteeSpecial: !!(guaranteeSpecialInput && guaranteeSpecialInput.checked),
+      cardsPerPlayer: cards,
+    });
   });
 
   leaveLobbyBtn.addEventListener('click', function () {
@@ -66,10 +87,11 @@
   });
 
   unoBtn.addEventListener('click', function () {
-    if (unoBtn.disabled) {
-      return;
-    }
     vscode.postMessage({ type: 'callUno' });
+  });
+
+  catchBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'catchUno' });
   });
 
   cancelWildBtn.addEventListener('click', function () {
@@ -141,10 +163,14 @@
 
     showScreen(state.screen);
 
+    if (unoDockBar) {
+      unoDockBar.classList.toggle('hidden', state.screen !== 'game');
+    }
+
     if (state.screen === 'menu') {
       appTitleEl.textContent = ultra ? 'Anshin' : 'Anshin · UNO';
       menuStatus.textContent = state.status || '';
-      renderUnoButton(null);
+      renderUnoSaid(null, ultra);
       return;
     }
 
@@ -152,9 +178,12 @@
       appTitleEl.textContent = ultra ? 'Anshin · lobby' : 'Anshin · UNO · Lobby';
       joinUrlDisplay.textContent = state.joinUrl || '';
       lobbyStatus.textContent = state.status || '';
-      renderUnoButton(null);
+      renderUnoSaid(null, ultra);
       startBtn.disabled = !state.youAreHost || !state.canStart;
       startBtn.classList.toggle('hidden', !state.youAreHost);
+      if (hostOpts) {
+        hostOpts.classList.toggle('hidden', !state.youAreHost);
+      }
       renderLobby(state.lobbyPlayers || []);
       return;
     }
@@ -165,18 +194,16 @@
     }
 
     const n = game.playerCount || 2;
+    const myTurn = game.currentPlayerId === game.yourPlayerId && !game.winnerId;
     appTitleEl.textContent = ultra ? 'Anshin' : 'Anshin · UNO · ' + n + 'P';
     discardLabelEl.textContent = ultra ? 'Active' : 'Discard';
-    youLabelEl.textContent = ultra ? 'local' : 'You';
-    if (game.awaitingWildColor) {
-      colorLineEl.textContent = ultra ? 'tone ?' : 'Color: waiting';
+    if (ultra) {
+      youLabelEl.textContent = myTurn ? 'local · turn' : 'local';
     } else {
-      colorLineEl.textContent = ultra
-        ? 'tone ' + game.currentColor
-        : 'Color: ' + game.currentColor + (game.direction === 1 ? ' · clockwise' : ' · counter-clockwise');
+      youLabelEl.textContent = 'You';
     }
-
     renderOpponents(game.opponents || [], ultra, game.currentPlayerId, game.winnerId);
+    renderTurnLine(game, ultra, state.yourName);
     renderDiscard(game.discard, ultra);
     renderHand(game.hand, state.selectedId, ultra);
 
@@ -184,15 +211,11 @@
     youCountEl.textContent = ultra ? handCount + ' items' : handCount + ' cards';
     const yourSeat = youLabelEl.closest('.seat-you');
     if (yourSeat) {
-      yourSeat.classList.toggle(
-        'your-turn',
-        game.currentPlayerId === game.yourPlayerId && !game.winnerId
-      );
+      yourSeat.classList.toggle('your-turn', myTurn);
     }
 
     statusEl.textContent = state.status || game.status || '';
 
-    const myTurn = game.currentPlayerId === game.yourPlayerId && !game.winnerId;
     drawBtn.disabled = !myTurn || !!game.awaitingWildColor;
     if (ultra) {
       drawBtn.textContent =
@@ -204,7 +227,9 @@
           : 'Draw (' + game.drawRemaining + ' left)';
     }
 
-    renderUnoButton(game.unoCall, game.yourPlayerId, ultra);
+    unoBtn.textContent = ultra ? 'Mark' : 'UNO';
+    catchBtn.textContent = ultra ? 'Flag' : 'Catch';
+    renderUnoSaid(game.unoSaid, ultra);
 
     const choosingOpening = !!game.awaitingWildColor && game.currentPlayerId === game.yourPlayerId;
     wildPicker.classList.toggle('hidden', !state.pendingWildCardId && !choosingOpening);
@@ -213,43 +238,46 @@
     }
   }
 
-  let unoTick = null;
-
-  function renderUnoButton(unoCall, yourPlayerId, ultra) {
-    if (unoTick) {
-      clearInterval(unoTick);
-      unoTick = null;
-    }
-    if (!unoCall) {
-      unoBtn.classList.add('hidden');
-      unoBtn.disabled = true;
+  function renderUnoSaid(unoSaid, ultra) {
+    if (!unoSaidLineEl) {
       return;
     }
-    const mine = unoCall.playerId === yourPlayerId;
-    const enabled = unoCall.phase === 'priority' ? mine : !mine;
-    const endsAt = Date.now() + (unoCall.remainingMs || 0);
-    unoBtn.classList.remove('hidden');
-    unoBtn.disabled = !enabled;
-
-    function paint() {
-      const seconds = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
-      if (ultra) {
-        unoBtn.textContent = enabled ? 'Mark (' + seconds + 's)' : 'Wait (' + seconds + 's)';
-        return;
-      }
-      if (mine && unoCall.phase === 'priority') {
-        unoBtn.textContent = 'UNO (' + seconds + 's)';
-        return;
-      }
-      if (!mine && unoCall.phase === 'catch') {
-        unoBtn.textContent = 'Catch UNO (' + seconds + 's)';
-        return;
-      }
-      unoBtn.textContent = mine ? 'Too late (' + seconds + 's)' : 'UNO (' + seconds + 's)';
+    if (!unoSaid) {
+      unoSaidLineEl.textContent = '';
+      unoSaidLineEl.classList.add('hidden');
+      return;
     }
+    unoSaidLineEl.classList.remove('hidden');
+    unoSaidLineEl.textContent = ultra
+      ? 'mark · ' + (unoSaid.playerName || '')
+      : (unoSaid.playerName ? unoSaid.playerName + ' · ' : '') + 'UNO';
+  }
 
-    paint();
-    unoTick = setInterval(paint, 250);
+  function renderTurnLine(game, ultra, yourName) {
+    if (!colorLineEl) {
+      return;
+    }
+    if (game.winnerId) {
+      colorLineEl.textContent = '';
+      colorLineEl.classList.add('hidden');
+      return;
+    }
+    var label = turnLabel(game, yourName);
+    colorLineEl.classList.remove('hidden');
+    colorLineEl.textContent = ultra ? 'next · ' + label : 'Turn: ' + label;
+  }
+
+  function turnLabel(game, yourName) {
+    if (game.currentPlayerId === game.yourPlayerId) {
+      return yourName || 'You';
+    }
+    var opponents = game.opponents || [];
+    for (var i = 0; i < opponents.length; i++) {
+      if (opponents[i].id === game.currentPlayerId) {
+        return opponents[i].name || '…';
+      }
+    }
+    return '…';
   }
 
   function renderLobby(players) {

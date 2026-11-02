@@ -68,6 +68,8 @@ export interface OpponentPublic {
   id: string;
   name: string;
   cardCount: number;
+  /** False while that player's socket is down and their seat is held. */
+  connected?: boolean;
 }
 
 export interface PersonalizedState {
@@ -85,4 +87,6 @@ export interface PersonalizedState {
   awaitingWildColor: boolean;
   unoCall: UnoCall | null;
   unoSaid: UnoSaid | null;
+  /** Epoch ms when the current turn is forced. Null while that player is disconnected. */
+  turnDeadline?: number | null;
 }

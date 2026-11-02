@@ -4,7 +4,20 @@ import {
   generateRoomToken,
   isValidBindHost,
   isValidPublicHost,
+  isValidPublicUrl,
 } from './uno/urlAuth';
+
+function redactRoomToken(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.searchParams.has('t')) {
+      parsed.searchParams.set('t', '***');
+    }
+    return parsed.toString();
+  } catch {
+    return url.replace(/([?&]t=)[^&#]*/g, '$1***');
+  }
+}
 
 async function main(): Promise<void> {
   const portRaw = process.env.PORT?.trim();
@@ -31,6 +44,16 @@ async function main(): Promise<void> {
     publicHost = publicRaw;
   }
 
+  const publicUrlRaw = (process.env.PUBLIC_URL ?? '').trim();
+  let publicUrl: string | undefined;
+  if (publicUrlRaw) {
+    if (!isValidPublicUrl(publicUrlRaw)) {
+      console.error(`Invalid PUBLIC_URL: ${publicUrlRaw}`);
+      process.exit(1);
+    }
+    publicUrl = publicUrlRaw;
+  }
+
   const tokenEnv = process.env.ROOM_TOKEN?.trim();
   const roomToken = tokenEnv && tokenEnv.length > 0 ? tokenEnv : generateRoomToken();
   const tokenFromEnv = Boolean(tokenEnv && tokenEnv.length > 0);
@@ -40,16 +63,21 @@ async function main(): Promise<void> {
     bindHost,
     persistent: true,
     publicHost,
+    publicUrl,
     roomToken,
   });
 
   console.log(`Anshin UNO room listening on ${bindHost}:${server.getPort()}`);
-  console.log(`Join URL: ${server.getJoinUrl()}`);
-  if (publicHost) {
-    console.log(`PUBLIC_HOST: ${publicHost}`);
-  }
-  if (!tokenFromEnv) {
+  if (tokenFromEnv) {
+    console.log(`Join URL: ${redactRoomToken(server.getJoinUrl())}`);
+  } else {
+    console.log(`Join URL: ${server.getJoinUrl()}`);
     console.log(`ROOM_TOKEN (generated): ${server.getRoomToken()}`);
+  }
+  if (publicUrl) {
+    console.log(`PUBLIC_URL: ${publicUrl}`);
+  } else if (publicHost) {
+    console.log(`PUBLIC_HOST: ${publicHost}`);
   }
 
   let shuttingDown = false;

@@ -191,7 +191,16 @@
     gameScreen.classList.toggle('hidden', screen !== 'game');
   }
 
+  let rendered = null;
+  setInterval(function () {
+    if (!rendered || rendered.screen !== 'game' || !rendered.game || !rendered.game.turnDeadline) {
+      return;
+    }
+    renderTurnLine(rendered.game, normalizeMode(rendered.guiMode) === 'ultra', rendered.yourName);
+  }, 1000);
+
   function render(state) {
+    rendered = state;
     const mode = normalizeMode(state.guiMode);
     const ultra = mode === 'ultra';
 
@@ -315,8 +324,13 @@
       return;
     }
     var label = turnLabel(game, yourName);
+    var suffix = '';
+    if (game.turnDeadline && !game.winnerId) {
+      var left = Math.max(0, Math.ceil((game.turnDeadline - Date.now()) / 1000));
+      suffix = ' · ' + left + 's';
+    }
     colorLineEl.classList.remove('hidden');
-    colorLineEl.textContent = ultra ? 'next · ' + label : 'Turn: ' + label;
+    colorLineEl.textContent = (ultra ? 'next · ' + label : 'Turn: ' + label) + suffix;
   }
 
   function turnLabel(game, yourName) {
@@ -355,7 +369,8 @@
     lobbyList.innerHTML = '';
     players.forEach(function (p) {
       const li = document.createElement('li');
-      li.textContent = p.name + (p.isHost ? ' (host)' : '');
+      var away = p.connected === false ? ' (reconnecting)' : '';
+      li.textContent = p.name + away + (p.isHost ? ' (host)' : '');
       lobbyList.appendChild(li);
     });
   }
@@ -373,13 +388,15 @@
         return;
       }
       section.classList.remove('hidden');
+      section.classList.toggle('disconnected', seat.connected === false);
       section.classList.toggle('your-turn', !winnerId && seat.id === currentPlayerId);
       const nameEl = section.querySelector('.seat-name');
       const countEl = section.querySelector('.seat-count');
       const cardsEl = section.querySelector('.seat-cards');
 
       if (nameEl) {
-        nameEl.textContent = ultra ? 'peer-' + (index + 1) : seat.name;
+        var awayName = seat.connected === false ? ' · away' : '';
+        nameEl.textContent = (ultra ? 'peer-' + (index + 1) : seat.name) + awayName;
       }
       if (countEl) {
         countEl.textContent = ultra

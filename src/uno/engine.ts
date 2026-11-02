@@ -267,6 +267,61 @@ export function playCard(
   return { ok: true, game: next };
 }
 
+/** Remove a seat mid-hand. Their cards return to the draw pile. One player left wins. */
+export function dropPlayer(game: GameSnapshot, playerId: string): GameSnapshot {
+  const next = cloneGame(game);
+  if (next.winnerId) {
+    return next;
+  }
+  const index = next.players.findIndex((p) => p.id === playerId);
+  if (index === -1) {
+    return next;
+  }
+  const [removed] = next.players.splice(index, 1);
+  if (removed.hand.length > 0) {
+    next.drawPile.push(...removed.hand);
+    shuffle(next.drawPile, next.random);
+  }
+  if (next.unoPendingPlayerId === playerId) {
+    clearUnoCall(next);
+  }
+  if (next.unoSaid?.playerId === playerId) {
+    next.unoSaid = null;
+  }
+  if (next.awaitingWildColor) {
+    next.awaitingWildColor = false;
+  }
+  if (next.players.length === 0) {
+    next.currentPlayerIndex = 0;
+    next.status = `${removed.name} left.`;
+    return next;
+  }
+
+  if (index < next.currentPlayerIndex) {
+    next.currentPlayerIndex -= 1;
+  } else if (index === next.currentPlayerIndex) {
+    if (next.direction === -1) {
+      next.currentPlayerIndex = (index - 1 + next.players.length) % next.players.length;
+    } else {
+      next.currentPlayerIndex = index % next.players.length;
+    }
+  }
+  if (next.players[next.currentPlayerIndex].hand.length === 0) {
+    advanceTurn(next);
+  }
+
+  const active = next.players.filter((p) => p.hand.length > 0);
+  if (active.length <= 1) {
+    const winner = active[0] ?? next.players[0];
+    next.winnerId = winner.id;
+    next.status = `${winner.name} wins!`;
+    return next;
+  }
+  const turnName = next.players[next.currentPlayerIndex].name;
+  next.status = `${removed.name} left. ${turnName}'s turn.`;
+  return next;
+}
+
 export function drawCard(game: GameSnapshot, playerId: string): ActionResult {
   if (game.awaitingWildColor) {
     return { ok: false, reason: 'Choose a color first.' };

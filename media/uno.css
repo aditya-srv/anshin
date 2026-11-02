@@ -814,6 +814,10 @@ body.gui-ultra .seat.your-turn #hand {
   background: #1565c0;
 }
 
+.seat.disconnected .seat-name {
+  opacity: 0.45;
+}
+
 body.gui-high .card.wild {
   background: #212121;
   background-image: conic-gradient(

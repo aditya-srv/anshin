@@ -8,12 +8,14 @@ export type ClientMessage =
   | { type: 'chooseColor'; color: UnoColor }
   | { type: 'uno' }
   | { type: 'catch' }
-  | { type: 'leave' };
+  | { type: 'leave' }
+  | { type: 'resume'; token: string };
 
 export interface LobbyPlayer {
   id: string;
   name: string;
   isHost: boolean;
+  connected: boolean;
 }
 
 export type ServerMessage =
@@ -25,16 +27,23 @@ export type ServerMessage =
       canStart: boolean;
       youAreHost: boolean;
       yourPlayerId: string;
+      resumeToken?: string;
     }
   | {
       type: 'state';
       state: PersonalizedState;
+      resumeToken?: string;
     }
   | {
       type: 'gameOver';
       state: PersonalizedState;
       winnerId: string;
       winnerName: string;
+      resumeToken?: string;
+    }
+  | {
+      type: 'waiting';
+      status: string;
     }
   | {
       type: 'error';
@@ -124,6 +133,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { type: 'catch' };
     case 'leave':
       return { type: 'leave' };
+    case 'resume': {
+      const token = (data as { token?: unknown }).token;
+      if (typeof token !== 'string' || !token.trim()) {
+        return null;
+      }
+      return { type: 'resume', token: token.trim() };
+    }
     default:
       return null;
   }

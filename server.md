@@ -1,13 +1,15 @@
 # Separate Node.js room server
 
-Optional remote host for UNO rooms (e.g. AWS EC2 **t3.micro**). Local in-extension hosting still works when `anshin.serverUrl` is empty.
+Optional remote host for UNO rooms (e.g. AWS EC2 **t3.micro**). The sidebar **Host room** button has a Local / Remote toggle. Local still binds a room on your LAN. Remote only connects to a Server Join URL.
 
 ## Dual mode
 
-| `anshin.serverUrl` | **Host room** |
+| Host toggle | What **Host room** does |
 | --- | --- |
-| empty (default) | Extension binds `RoomServer` locally (LAN), same as before |
-| set (e.g. join URL from server logs) | Extension connects only — no local port bind |
+| Local (default) | Extension binds `RoomServer` on this machine (LAN) |
+| Remote | Extension connects to the Server Join URL. No local port bind |
+
+`anshin.serverUrl` pre-fills the Remote field. It does not switch the toggle by itself. Leave it empty to type the URL in the sidebar.
 
 **Join room** always pastes a `ws://` / `wss://` URL that includes the room token (`?t=…`).
 
@@ -16,8 +18,8 @@ Optional remote host for UNO rooms (e.g. AWS EC2 **t3.micro**). Local in-extensi
 | Piece | Role |
 | --- | --- |
 | `npm run server` | Persistent WebSocket room + game engine on the VPS |
-| Extension (local) | Host binds in-process when `anshin.serverUrl` is empty |
-| Extension (remote) | Connect to `anshin.serverUrl` on **Host room** |
+| Extension (Local) | Host binds in-process |
+| Extension (Remote) | Connect to the Server Join URL on **Host room** |
 | Join | Others paste the same `ws://…?t=…` URL |
 
 ## Why this shape
@@ -35,41 +37,46 @@ Optional remote host for UNO rooms (e.g. AWS EC2 **t3.micro**). Local in-extensi
 
 ## Server (`src/server.ts`)
 
-- `RoomServer.start({ port, bindHost, persistent: true, publicHost, roomToken })`
+- `RoomServer.start({ port, bindHost, persistent: true, publicHost, publicUrl, roomToken })`
 - Env:
   - `PORT` (default `3847`)
   - `BIND_HOST` (default `0.0.0.0`)
-  - `PUBLIC_HOST` or `JOIN_HOST` (hostname or IPv4 only)
-  - `ROOM_TOKEN` (optional; if unset, generated and logged once at startup)
+  - `PUBLIC_HOST` or `JOIN_HOST` (hostname or IPv4 only). This is the only advertised address — private LAN IPs are not added
+  - `PUBLIC_URL` (optional full `ws://` or `wss://` base, including a port or path). When set, this is the only join URL and `PUBLIC_HOST` is not used for advertising
+  - `ROOM_TOKEN` (optional; if unset, generated and logged once at startup). When set, startup logs the join URL with the token redacted
 - `SIGINT` / `SIGTERM` → `dispose()`
-- Persistent room: after game end or mid-game disconnect, reset to an empty lobby; in lobby, if the host leaves but others remain, promote another seat to host
-- Join URLs prefer `PUBLIC_HOST`, then LAN IPs, always with `?t=`
+- Sockets are pinged. A socket that misses a pong is closed so a dead connection cannot hold the turn
+- A dropped seat is held for 20s. The same player can resume and keep their hand. Leave removes the seat immediately. If only one player is left, they win
+- The current player has 45s. On expiry the server chooses red if a color is required, otherwise draws one card and passes the turn
+- Someone who joins during a hand waits, then sits down when that hand returns to the lobby
+- After a win, the same players stay connected, see the winner, then return to the lobby. A Local room uses these same reconnect, turn clock, and next-hand rules. On the VPS, if the host leaves the lobby but others remain, another seat is promoted. A Local host leaving the lobby closes the room
 - `package.json`: `"server": "node out/server.js"`
 
 ## Extension
 
-1. Setting `anshin.serverUrl` (default `""`):
-   - empty → **Host room** starts local `RoomServer` (join URL includes a fresh `?t=`)
-   - set → **Host room** connects `RoomClient` to that full URL (must include `?t=` from the server’s printed Join URL)
-2. **Join room** → paste the same `ws://…?t=…` address
+1. **Host room** → **Local** starts a room on this machine (join URL includes a fresh `?t=`).
+2. **Host room** → **Remote** connects to the Server Join URL. The field must be a `ws://` or `wss://` URL that includes `?t=`. `anshin.serverUrl` pre-fills it.
+3. **Join room** → paste the same `ws://…?t=…` address. The first player in an empty lobby is the host.
 
 ## Deploy on AWS t3.micro
 
 ```bash
 # On the instance (Node 20+)
-git clone <repo> && cd terminal_manager
+git clone <repo> && cd anshin
 npm install
 npm run compile
 
 export PUBLIC_HOST=YOUR_ELASTIC_IP_OR_DNS
 export PORT=3847
-# optional stable secret:
+# behind TLS, advertise the proxy URL instead of PUBLIC_HOST:
+# export PUBLIC_URL=wss://uno.example.com
+# optional stable secret (not printed):
 # export ROOM_TOKEN=your-long-random-hex
 # optional: export BIND_HOST=0.0.0.0
 npm run server
 ```
 
-Copy the printed **Join URL** (includes `?t=`). That is what you share and what you put in `anshin.serverUrl`.
+Copy the printed **Join URL** (includes `?t=` when the token was generated). That is what you share. Players toggle **Remote** and paste it, or set `anshin.serverUrl` so the Remote field is pre-filled.
 
 - Security group: inbound **TCP 3847** from player IPs (or wider if you accept the risk).
 - Optional: `pm2` / systemd so the process survives logout.
@@ -77,9 +84,10 @@ Copy the printed **Join URL** (includes `?t=`). That is what you share and what 
 
 ## Client setup (remote)
 
-1. Set **Anshin: Server Url** to the server’s Join URL (`ws://…?t=…`).
-2. Host clicks **Host room**; share that URL.
-3. Others **Join room** with the same address.
+1. Toggle **Remote** on **Host room**.
+2. Paste the server Join URL (`ws://…?t=…` or `wss://…?t=…`), or set **Anshin: Server Url** so that field is filled in.
+3. Host clicks **Host room**. If the lobby is empty, that player becomes host.
+4. Others **Join room** with the same address.
 
 ## Later polish
 

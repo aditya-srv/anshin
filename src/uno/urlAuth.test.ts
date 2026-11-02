@@ -7,6 +7,7 @@ import {
   isValidBindHost,
   isValidJoinUrl,
   isValidPublicHost,
+  isValidPublicUrl,
   tokensEqual,
 } from './urlAuth';
 
@@ -56,9 +57,18 @@ describe('urlAuth', () => {
     assert.strictEqual(isValidBindHost('bad host'), false);
   });
 
+  it('validates public URLs', () => {
+    assert.strictEqual(isValidPublicUrl('wss://uno.example.com/room'), true);
+    assert.strictEqual(isValidPublicUrl('ws://203.0.113.10:3847'), true);
+    assert.strictEqual(isValidPublicUrl('http://example.com'), false);
+    assert.strictEqual(isValidPublicUrl('wss://user:pass@example.com'), false);
+  });
+
   it('validates join URLs', () => {
     assert.strictEqual(isValidJoinUrl('ws://192.168.0.5:3847/?t=abc'), true);
     assert.strictEqual(isValidJoinUrl('wss://example.com/room?t=x'), true);
+    assert.strictEqual(isValidJoinUrl('ws://192.168.0.5:3847'), false);
+    assert.strictEqual(isValidJoinUrl('ws://192.168.0.5:3847/?t='), false);
     assert.strictEqual(isValidJoinUrl('ws://'), false);
     assert.strictEqual(isValidJoinUrl('http://example.com'), false);
   });

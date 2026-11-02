@@ -17,7 +17,7 @@ npm install
 4. In the Extension Development Host window, click the **Anshin** icon in the Activity Bar.
 5. Use the sidebar:
    - **Host room** or paste a `ws://…?t=…` join URL and **Join room**.
-   - By default **Host room** binds a local LAN server (join URL includes a room token). To use a remote room process instead, set **Anshin: Server Url** (`anshin.serverUrl`) to the server’s printed Join URL (details in `server.md` in this repo).
+   - **Host room** has a Local / Remote toggle. Local binds a LAN server (the join URL includes a room token). Remote connects to a Server Join URL and does not bind a local port. **Anshin: Server Url** (`anshin.serverUrl`) only pre-fills that Remote field (details in `server.md`).
    - The host shares the join URL and starts once two to six players are in the lobby.
    - On your turn, click a legal card to select it and click again to play it. Wilds ask for a color.
    - **Draw** takes one card from the draw pile (the discard is reshuffled in when the pile runs out) and passes the turn. If nothing is left to draw, the turn passes.
@@ -42,5 +42,5 @@ npx vsce package --allow-missing-repository
 ## install in cursor
 
 ```bash
-cursor --install-extension anshin-0.0.6.vsix
+cursor --install-extension anshin-0.0.7.vsix
 ```

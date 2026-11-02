@@ -4,6 +4,35 @@ import { UnoColor } from './types';
 
 export type RoomClientHandler = (message: ServerMessage) => void;
 
+const CLOSE_UNAUTHORIZED = 4001;
+const CLOSE_CAPACITY = 4002;
+const CLOSE_IDLE = 4003;
+const CLOSE_RATE = 4004;
+
+/** Text for a WebSocket close, preferring the server reason. */
+export function describeSocketClose(code: number, reason: Buffer | string): string {
+  const text = (typeof reason === 'string' ? reason : reason.toString('utf8')).trim();
+  if (text) {
+    return text;
+  }
+  switch (code) {
+    case CLOSE_UNAUTHORIZED:
+      return 'Unauthorized';
+    case CLOSE_CAPACITY:
+      return 'Room at capacity';
+    case CLOSE_IDLE:
+      return 'Join timed out';
+    case CLOSE_RATE:
+      return 'Too many messages.';
+    default:
+      return 'Connection closed.';
+  }
+}
+
+function isRoomCloseCode(code: number): boolean {
+  return code >= CLOSE_UNAUTHORIZED && code <= CLOSE_RATE;
+}
+
 export class RoomClient {
   private ws: WebSocket | null = null;
   private readonly onMessage: RoomClientHandler;
@@ -76,16 +105,18 @@ export class RoomClient {
         finish(connectError);
       });
 
-      ws.on('close', () => {
+      ws.on('close', (code: number, reason: Buffer) => {
+        const message = describeSocketClose(code, reason);
+        const failure = isRoomCloseCode(code) ? new Error(message) : (connectError ?? new Error(message));
         if (!settled) {
-          finish(connectError ?? new Error('Connection closed.'));
+          finish(failure);
         }
         if (this.ws !== ws) {
           return;
         }
         this.ws = null;
         if (opened) {
-          this.onClosed(connectError ? connectError.message : 'Connection closed.');
+          this.onClosed(isRoomCloseCode(code) ? message : (connectError?.message ?? message));
         }
       });
     });
@@ -93,6 +124,10 @@ export class RoomClient {
 
   join(name: string): void {
     this.send({ type: 'join', name });
+  }
+
+  resume(token: string): void {
+    this.send({ type: 'resume', token });
   }
 
   start(guaranteeSpecial = true, cardsPerPlayer = 7): void {

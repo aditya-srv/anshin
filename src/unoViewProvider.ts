@@ -49,6 +49,12 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   private _view?: vscode.WebviewView;
   private _server: RoomServer | null = null;
   private _client: RoomClient | null = null;
+  private resumeToken = '';
+  /** URL this client actually opened. Retries use it; the lobby may show a different share address. */
+  private connectedUrl = '';
+  private allowRetry = false;
+  private retrying = false;
+  private localCloseReason: string | null = null;
   private _state: UiState;
   private _busy = false;
   private _sessionGen = 0;
@@ -154,6 +160,11 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         break;
       }
       case 'leave':
+        this.allowRetry = false;
+        this.localCloseReason = 'Left the room.';
+        this.resumeAttempt?.(false);
+        this.resumeAttempt = null;
+        this._client?.leave();
         await this.runExclusive(() => this.teardownSession('Left the room.'));
         break;
       case 'copyJoinUrl':
@@ -407,20 +418,110 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   private async connectClient(url: string, name: string): Promise<void> {
-    const client = new RoomClient(
-      (msg) => this.onServerMessage(msg),
-      (reason) => {
-        void this.teardownSession(reason);
-      }
-    );
+    this.connectedUrl = url;
+    const client = this.openClient();
     this._client = client;
     await client.connect(url);
     client.join(name);
   }
 
+  private openClient(): RoomClient {
+    return new RoomClient(
+      (msg) => this.onServerMessage(msg),
+      (reason) => this.onClientClosed(reason)
+    );
+  }
+
+  private onClientClosed(reason: string): void {
+    const status = this.localCloseReason ?? reason;
+    this.localCloseReason = null;
+    if (this.retrying) {
+      this.resumeAttempt?.(false);
+      this.resumeAttempt = null;
+      return;
+    }
+    if (this.allowRetry && this.resumeToken && this.connectedUrl) {
+      void this.retryResume();
+      return;
+    }
+    void this.teardownSession(status);
+  }
+
+  private async retryResume(): Promise<void> {
+    if (this.retrying) {
+      return;
+    }
+    this.retrying = true;
+    const token = this.resumeToken;
+    const url = this.connectedUrl;
+    const deadline = Date.now() + 20_000;
+    this._state.status = 'Reconnecting…';
+    this.postUi();
+    try {
+      while (this.allowRetry && Date.now() < deadline) {
+        const previous = this._client;
+        this._client = null;
+        previous?.dispose();
+        const ok = await this.connectForResume(url, token);
+        if (ok) {
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    } finally {
+      this.retrying = false;
+    }
+    if (this.allowRetry) {
+      await this.teardownSession('Could not reconnect.');
+    }
+  }
+
+  private connectForResume(url: string, token: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout>;
+      const finish = (ok: boolean): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const client = this.openClient();
+      this._client = client;
+      timer = setTimeout(() => finish(false), 3000);
+      const original = client;
+      this.resumeAttempt = (ok: boolean): void => {
+        clearTimeout(timer);
+        finish(ok);
+      };
+      void client.connect(url).then(
+        () => {
+          if (this._client !== original) {
+            finish(false);
+            return;
+          }
+          client.resume(token);
+        },
+        () => finish(false)
+      );
+    });
+  }
+
+  private resumeAttempt: ((ok: boolean) => void) | null = null;
+
   private onServerMessage(msg: ServerMessage): void {
+    if (msg.type === 'lobby' || msg.type === 'state' || msg.type === 'gameOver') {
+      if (msg.resumeToken) {
+        this.resumeToken = msg.resumeToken;
+        this.allowRetry = true;
+      }
+      this.resumeAttempt?.(true);
+      this.resumeAttempt = null;
+    }
     switch (msg.type) {
-      case 'lobby':
+      case 'lobby': {
         this._state.screen = 'lobby';
         this._state.lobbyPlayers = msg.players;
         this._state.joinUrl = msg.joinUrl;
@@ -429,9 +530,13 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this._state.youAreHost = msg.youAreHost;
         this._state.yourPlayerId = msg.yourPlayerId;
         this._state.game = null;
-        this._state.status = lobbyStatus(msg.youAreHost, msg.joinUrl, this._state.joinUrls);
+        const away = msg.players.filter((player) => !player.connected).map((player) => player.name);
+        this._state.status = away.length
+          ? `${away.join(', ')} disconnected. Reconnecting…`
+          : lobbyStatus(msg.youAreHost, msg.joinUrl, this._state.joinUrls);
         this.postUi();
         break;
+      }
       case 'state':
         this._state.screen = 'game';
         this._state.game = msg.state;
@@ -448,16 +553,33 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
         this._state.pendingWildCardId = null;
         this.postUi();
         break;
+      case 'waiting':
+        this._state.screen = 'lobby';
+        this._state.lobbyPlayers = [];
+        this._state.canStart = false;
+        this._state.youAreHost = false;
+        this._state.game = null;
+        this._state.status = msg.status;
+        this.postUi();
+        break;
       case 'error':
         this._state.status = msg.reason;
         this.postUi();
         break;
       case 'ended':
+        this.allowRetry = false;
+        this.resumeAttempt?.(false);
+        this.resumeAttempt = null;
         break;
     }
   }
 
   private async teardownSession(status?: string): Promise<void> {
+    this.allowRetry = false;
+    this.resumeToken = '';
+    this.connectedUrl = '';
+    this.resumeAttempt?.(false);
+    this.resumeAttempt = null;
     const gen = ++this._sessionGen;
     const client = this._client;
     this._client = null;
@@ -519,6 +641,7 @@ export class UnoViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
               awaitingWildColor: this._state.game.awaitingWildColor,
               unoCall: this._state.game.unoCall,
               unoSaid: this._state.game.unoSaid,
+              turnDeadline: this._state.game.turnDeadline ?? null,
               hand: playableHand(this._state.game),
             }
           : null,

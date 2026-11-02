@@ -106,8 +106,8 @@ export function isValidBindHost(value: string): boolean {
   return isHostname(host);
 }
 
-/** ws/wss URL with a non-empty hostname (and optional path/query). */
-export function isValidJoinUrl(raw: string): boolean {
+/** ws/wss URL with a hostname. Token is optional; this is the public base before `?t=` is added. */
+export function isValidPublicUrl(raw: string): boolean {
   const trimmed = raw.trim();
   if (!/^wss?:\/\//i.test(trimmed)) {
     return false;
@@ -117,7 +117,23 @@ export function isValidJoinUrl(raw: string): boolean {
     if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
       return false;
     }
+    if (parsed.username || parsed.password) {
+      return false;
+    }
     return Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** ws/wss join URL with a hostname and a non-empty `?t=` room token. */
+export function isValidJoinUrl(raw: string): boolean {
+  if (!isValidPublicUrl(raw)) {
+    return false;
+  }
+  try {
+    const token = new URL(raw.trim()).searchParams.get(TOKEN_QUERY);
+    return Boolean(token && token.trim());
   } catch {
     return false;
   }

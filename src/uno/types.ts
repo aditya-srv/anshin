@@ -50,6 +50,8 @@ export interface GameSnapshot {
   currentColor: UnoColor;
   currentPlayerIndex: number;
   direction: Direction;
+  /** Players who emptied their hand, in finish order. First entry is the winner when the round ends. */
+  finishedOrder: string[];
   winnerId: string | null;
   status: string;
   /** True after an opening wild until the starting player picks a color. */

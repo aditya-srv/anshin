@@ -321,6 +321,28 @@ describe('playCard', () => {
     assert.strictEqual(next.winnerId, 'a');
   });
 
+  it('keeps playing until only one player has cards', () => {
+    const game = makeTestGame({
+      players: [
+        { id: 'a', name: 'A', hand: [{ id: 'h1', color: 'red', value: '7' }] },
+        { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'red', value: '3' }] },
+        { id: 'c', name: 'C', hand: [{ id: 'h3', color: 'blue', value: '1' }] },
+      ],
+      currentPlayerIndex: 0,
+      currentColor: 'red',
+      discardPile: [{ id: 'd0', color: 'red', value: '5' }],
+    });
+    const afterA = mustPlay(game, 'a', 'h1');
+    assert.strictEqual(afterA.winnerId, null);
+    assert.deepStrictEqual(afterA.finishedOrder, ['a']);
+    assert.strictEqual(afterA.currentPlayerIndex, 1);
+
+    const afterB = mustPlay(afterA, 'b', 'h2');
+    assert.strictEqual(afterB.winnerId, 'a');
+    assert.deepStrictEqual(afterB.finishedOrder, ['a', 'b']);
+    assert.match(afterB.status, /A wins/);
+  });
+
   it('requires wild color', () => {
     const game = makeTestGame({
       players: [
@@ -709,6 +731,22 @@ describe('uno call', () => {
     });
     const next = mustPlay(game, 'a', 'h1');
     assert.strictEqual(next.winnerId, 'a');
+    assert.strictEqual(next.unoPendingPlayerId, null);
+  });
+
+  it('does not open a call when a player goes out mid-round', () => {
+    const game = makeTestGame({
+      players: [
+        { id: 'a', name: 'A', hand: [{ id: 'h1', color: 'red', value: '7' }] },
+        { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'red', value: '3' }] },
+        { id: 'c', name: 'C', hand: [{ id: 'h3', color: 'blue', value: '1' }] },
+      ],
+      currentPlayerIndex: 0,
+      currentColor: 'red',
+      discardPile: [{ id: 'd0', color: 'red', value: '5' }],
+    });
+    const next = mustPlay(game, 'a', 'h1');
+    assert.strictEqual(next.winnerId, null);
     assert.strictEqual(next.unoPendingPlayerId, null);
   });
 });

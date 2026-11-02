@@ -105,6 +105,7 @@ export function createGame(
     currentColor: (first.color ?? 'red') as UnoColor,
     currentPlayerIndex: 0,
     direction: 1,
+    finishedOrder: [],
     winnerId: null,
     status: '',
     awaitingWildColor: false,
@@ -201,6 +202,9 @@ export function playCard(
   }
 
   const player = game.players[playerIndex];
+  if (player.hand.length === 0) {
+    return { ok: false, reason: 'You are already out.' };
+  }
   const handIndex = player.hand.findIndex((c) => c.id === cardId);
   if (handIndex === -1) {
     return { ok: false, reason: 'Card not in hand.' };
@@ -231,17 +235,31 @@ export function playCard(
 
   clearUnoSaid(next);
 
-  if (nextPlayer.hand.length === 0) {
+  const wentOut = nextPlayer.hand.length === 0;
+  if (wentOut) {
     clearUnoCall(next);
-    next.winnerId = playerId;
-    next.status = `${nextPlayer.name} wins!`;
-    return { ok: true, game: next };
+    next.finishedOrder.push(playerId);
   }
 
   applyActionEffects(next, card, true);
+  ensureActiveCurrentPlayer(next);
+
+  const activeLeft = next.players.filter((p) => p.hand.length > 0);
+  if (activeLeft.length <= 1) {
+    const winnerId = next.finishedOrder[0] ?? playerId;
+    const winner = next.players.find((p) => p.id === winnerId);
+    next.winnerId = winnerId;
+    next.status = `${winner?.name ?? nextPlayer.name} wins!`;
+    return { ok: true, game: next };
+  }
+
   const turnName = next.players[next.currentPlayerIndex].name;
   const label = formatCard(card);
-  next.status = `${nextPlayer.name} played ${label}. ${turnName}'s turn.`;
+  if (wentOut) {
+    next.status = `${nextPlayer.name} is out! ${turnName}'s turn.`;
+  } else {
+    next.status = `${nextPlayer.name} played ${label}. ${turnName}'s turn.`;
+  }
   releaseUnoIfHandChanged(next);
   if (nextPlayer.hand.length === 1) {
     openUnoCall(next, playerId);
@@ -263,6 +281,9 @@ export function drawCard(game: GameSnapshot, playerId: string): ActionResult {
   }
   if (playerIndex !== game.currentPlayerIndex) {
     return { ok: false, reason: 'Not your turn.' };
+  }
+  if (game.players[playerIndex].hand.length === 0) {
+    return { ok: false, reason: 'You are already out.' };
   }
 
   const next = cloneGame(game);
@@ -383,12 +404,12 @@ function applyActionEffects(
   card: UnoCard,
   advanceAfter: boolean
 ): GameSnapshot {
-  const n = game.players.length;
+  const active = game.players.filter((p) => p.hand.length > 0).length;
 
   switch (card.value) {
     case 'reverse': {
-      if (n === 2) {
-        // Reverse with 2 players acts like Skip.
+      if (active === 2) {
+        // Reverse with 2 active players acts like Skip.
         advanceTurn(game);
         advanceTurn(game);
       } else {
@@ -469,7 +490,20 @@ function ensureOpeningSpecial(
 
 function advanceTurn(game: GameSnapshot): void {
   const n = game.players.length;
-  game.currentPlayerIndex = (game.currentPlayerIndex + game.direction + n) % n;
+  for (let i = 0; i < n; i++) {
+    game.currentPlayerIndex = (game.currentPlayerIndex + game.direction + n) % n;
+    if (game.players[game.currentPlayerIndex].hand.length > 0) {
+      return;
+    }
+  }
+}
+
+/** After effects, land on a player who still has cards. */
+function ensureActiveCurrentPlayer(game: GameSnapshot): void {
+  if (game.players[game.currentPlayerIndex].hand.length > 0) {
+    return;
+  }
+  advanceTurn(game);
 }
 
 function takeFromDraw(game: GameSnapshot, count: number): UnoCard[] {
@@ -514,6 +548,7 @@ function cloneGame(game: GameSnapshot): GameSnapshot {
     currentColor: game.currentColor,
     currentPlayerIndex: game.currentPlayerIndex,
     direction: game.direction,
+    finishedOrder: game.finishedOrder.slice(),
     winnerId: game.winnerId,
     status: game.status,
     awaitingWildColor: game.awaitingWildColor,
@@ -588,6 +623,7 @@ export function makeTestGame(partial: Partial<GameSnapshot> & { players: PlayerS
     currentColor: 'red',
     currentPlayerIndex: 0,
     direction: 1,
+    finishedOrder: [],
     winnerId: null,
     status: '',
     awaitingWildColor: false,

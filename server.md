@@ -65,21 +65,23 @@ Optional remote host for UNO rooms (e.g. AWS EC2 **t3.micro**). The sidebar **Ho
 git clone <repo> && cd anshin
 npm install
 npm run compile
-
-export PUBLIC_HOST=YOUR_ELASTIC_IP_OR_DNS
-export PORT=3847
-# behind TLS, advertise the proxy URL instead of PUBLIC_HOST:
-# export PUBLIC_URL=wss://uno.example.com
-# optional stable secret (not printed):
-# export ROOM_TOKEN=your-long-random-hex
-# optional: export BIND_HOST=0.0.0.0
+cp .env.example .env
+# Edit .env: set PUBLIC_HOST to the Elastic IP or public DNS, and set ROOM_TOKEN.
 npm run server
+```
+
+`npm run server` and pm2 both load `.env` from the repo root. A variable already set in the shell or by pm2 is left as-is. To keep the process up after logout:
+
+```bash
+pm2 start npm --name anshin -- run server
+pm2 save
+pm2 startup
 ```
 
 Copy the printed **Join URL** (includes `?t=` when the token was generated). That is what you share. Players toggle **Remote** and paste it, or set `anshin.serverUrl` so the Remote field is pre-filled.
 
 - Security group: inbound **TCP 3847** from player IPs (or wider if you accept the risk).
-- Optional: `pm2` / systemd so the process survives logout.
+- `pm2 startup` (above), or a systemd unit, so the process survives logout.
 - Local smoke test: `PUBLIC_HOST=127.0.0.1 npm run server`, set `anshin.serverUrl` to the printed Join URL.
 
 ## Client setup (remote)

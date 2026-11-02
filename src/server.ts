@@ -1,3 +1,5 @@
+import dotenv from 'dotenv';
+import path from 'path';
 import { DEFAULT_UNO_PORT } from './uno/lan';
 import { RoomServer } from './uno/roomServer';
 import {
@@ -18,6 +20,8 @@ function redactRoomToken(url: string): string {
     return url.replace(/([?&]t=)[^&#]*/g, '$1***');
   }
 }
+
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 async function main(): Promise<void> {
   const portRaw = process.env.PORT?.trim();

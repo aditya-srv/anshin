@@ -7,10 +7,13 @@ tsconfig.json
 **/*.map
 *.md
 !README.md
-# Keep production deps (ws); drop tooling only
+# Keep production deps (ws, dotenv); drop tooling only
 node_modules/**
 !node_modules/ws/
 !node_modules/ws/**
+!node_modules/dotenv/
+!node_modules/dotenv/**
 out/**/*.test.js
 *.vsix
+.env
 steps.md

@@ -34,6 +34,26 @@
   box-shadow: inset 0 0 0 1px var(--ludo-low-line);
 }
 
+/* Low: safe spots marked with a plain *. High GUI overrides to ✦. */
+.ludo-cell.star::after {
+  content: '*';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ludo-cell.star.start::after {
+  display: none;
+}
+
 /* Low: yards stay empty — no borders, no color. */
 .ludo-cell.yard {
   box-shadow: none;
@@ -437,12 +457,20 @@ body.gui-high .ludo-cell.start.blue::before {
 
 body.gui-high .ludo-cell.star::after {
   content: '✦';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
   color: #8a6a12;
   opacity: 1;
   text-shadow:
     0 0 2px rgba(255, 214, 90, 0.55),
     0 1px 0 rgba(255, 255, 255, 0.35);
+  pointer-events: none;
   z-index: 0;
 }
 

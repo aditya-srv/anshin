@@ -107,6 +107,9 @@ describe('ludo rules', () => {
       return;
     }
     assert.strictEqual(token(capture.session, 'p2:0').progress, -1);
+    assert.strictEqual(capture.session.currentPlayerIndex, 0);
+    assert.strictEqual(capture.session.awaiting, 'roll');
+    assert.match(capture.session.status, /captured a token\. Roll again/);
 
     let passed = createGame(PLAYERS, fixed([2]));
     passed = placeToken(passed, 'p1:0', 0);

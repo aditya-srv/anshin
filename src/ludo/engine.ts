@@ -77,8 +77,8 @@ export function rollDice(session: LudoSession, playerId: string, dice: number): 
   }
 
   if (legal.length === 1) {
-    applyTokenMove(next, legal[0], dice);
-    finishTurn(next, actor.name, dice);
+    const captured = applyTokenMove(next, legal[0], dice);
+    finishTurn(next, actor.name, dice, captured);
     return { ok: true, session: next };
   }
 
@@ -99,8 +99,8 @@ export function moveToken(session: LudoSession, playerId: string, tokenId: strin
   const next = clone(session);
   const actor = current(next);
   const dice = next.dice ?? 0;
-  applyTokenMove(next, tokenId, dice);
-  finishTurn(next, actor.name, dice);
+  const captured = applyTokenMove(next, tokenId, dice);
+  finishTurn(next, actor.name, dice, captured);
   return { ok: true, session: next };
 }
 
@@ -190,7 +190,12 @@ function gateTurn(session: LudoSession, playerId: string, phase: 'roll' | 'move'
   return { ok: true, session };
 }
 
-function finishTurn(session: LudoSession, actorName: string, dice: number): void {
+function finishTurn(
+  session: LudoSession,
+  actorName: string,
+  dice: number,
+  captured: boolean
+): void {
   if (session.winnerId) {
     const winner = session.players.find((player) => player.id === session.winnerId);
     session.status = `${winner?.name ?? actorName} wins!`;
@@ -202,7 +207,16 @@ function finishTurn(session: LudoSession, actorName: string, dice: number): void
     session.consecutiveSixes += 1;
     session.awaiting = 'roll';
     session.legalTokenIds = [];
-    session.status = `${actorName} rolled a 6. Roll again.`;
+    session.status = captured
+      ? `${actorName} rolled a 6 and captured. Roll again.`
+      : `${actorName} rolled a 6. Roll again.`;
+    return;
+  }
+  if (captured) {
+    session.consecutiveSixes = 0;
+    session.awaiting = 'roll';
+    session.legalTokenIds = [];
+    session.status = `${actorName} captured a token. Roll again.`;
     return;
   }
   session.consecutiveSixes = 0;
@@ -216,29 +230,31 @@ function passTurn(session: LudoSession): void {
   session.currentPlayerIndex = (session.currentPlayerIndex + 1) % session.players.length;
 }
 
-function applyTokenMove(session: LudoSession, tokenId: string, dice: number): void {
+function applyTokenMove(session: LudoSession, tokenId: string, dice: number): boolean {
   const token = session.tokens.find((item) => item.id === tokenId);
   if (!token) {
-    return;
+    return false;
   }
+  let captured = false;
   if (token.progress < 0) {
     token.progress = 0;
   } else {
     token.progress += dice;
-    capture(session, token);
+    captured = capture(session, token);
   }
   if (session.tokens.filter((item) => item.playerId === token.playerId && item.progress === DONE).length === TOKENS_PER_PLAYER) {
     session.winnerId = token.playerId;
   }
+  return captured;
 }
 
-function capture(session: LudoSession, moved: LudoToken): void {
+function capture(session: LudoSession, moved: LudoToken): boolean {
   if (moved.progress < 0 || moved.progress > LAST_TRACK) {
-    return;
+    return false;
   }
   const landed = trackIndexFor(moved.color, moved.progress);
   if (isSafeTrack(landed)) {
-    return;
+    return false;
   }
   const opponents = session.tokens.filter(
     (token) =>
@@ -249,7 +265,9 @@ function capture(session: LudoSession, moved: LudoToken): void {
   );
   if (opponents.length === 1) {
     opponents[0].progress = -1;
+    return true;
   }
+  return false;
 }
 
 function legalTokenIds(session: LudoSession, dice: number): string[] {

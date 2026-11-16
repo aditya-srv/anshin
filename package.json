@@ -2,7 +2,7 @@
   "name": "anshin",
   "displayName": "Anshin",
   "description": "Anshin sidebar sessions panel",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "aditya",
   "engines": {
     "vscode": "^1.85.0"
@@ -47,7 +47,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "server": "node out/server.js",
-    "test": "npm run compile && node --test out/uno/*.test.js"
+    "test": "npm run compile && node --test out/room/*.test.js out/uno/*.test.js out/ludo/*.test.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -1,0 +1,544 @@
+/*
+ * Shared board layout (low + high).
+ * Low GUI (default): stealth borders, empty yards, row-of-dots tokens, plus center.
+ * High GUI: classic filled yards / nests / home triangle.
+ */
+.ludo-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  grid-template-rows: repeat(15, 1fr);
+  width: min(100%, 420px);
+  aspect-ratio: 1;
+  margin: 8px auto;
+  border: 1px solid var(--card-border, rgba(128, 128, 128, 0.45));
+  background: var(--vscode-editor-background, transparent);
+  overflow: hidden;
+  --ludo-token-red: #c97878;
+  --ludo-token-green: #7aa87c;
+  --ludo-token-yellow: #cbb86a;
+  --ludo-token-blue: #6e9fc4;
+  --ludo-low-line: var(--card-border, rgba(128, 128, 128, 0.28));
+}
+
+.ludo-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: transparent;
+}
+
+.ludo-cell.track,
+.ludo-cell.home,
+.ludo-cell.start {
+  box-shadow: inset 0 0 0 1px var(--ludo-low-line);
+}
+
+/* Low: yards stay empty — no borders, no color. */
+.ludo-cell.yard {
+  box-shadow: none;
+}
+
+.ludo-cell.center {
+  box-shadow: none;
+}
+
+/*
+ * Yard nest host (shared). Low: no frame/pads — only a row of dots.
+ * High restores classic nest + square pads.
+ */
+.ludo-yard-nest {
+  display: block;
+  position: relative;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ludo-yard-pad {
+  display: none;
+}
+
+.ludo-yard-nest .ludo-token.yard-spot {
+  width: 8%;
+  height: 8%;
+  min-width: 4px;
+  min-height: 4px;
+  border: none;
+  pointer-events: auto;
+  z-index: 2;
+}
+
+.ludo-yard-nest .ludo-token.yard-spot.red {
+  background: var(--ludo-token-red);
+}
+
+.ludo-yard-nest .ludo-token.yard-spot.green {
+  background: var(--ludo-token-green);
+}
+
+.ludo-yard-nest .ludo-token.yard-spot.yellow {
+  background: var(--ludo-token-yellow);
+}
+
+.ludo-yard-nest .ludo-token.yard-spot.blue {
+  background: var(--ludo-token-blue);
+}
+
+/* 3×3 home overlay: outline + plus (not an X — less Ludo-shaped) */
+.ludo-home-tri {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-row: 7 / span 3;
+  grid-column: 7 / span 3;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ludo-low-line);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ludo-home-tri::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      to right,
+      transparent calc(50% - 0.5px),
+      var(--ludo-low-line) calc(50% - 0.5px),
+      var(--ludo-low-line) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(
+      to bottom,
+      transparent calc(50% - 0.5px),
+      var(--ludo-low-line) calc(50% - 0.5px),
+      var(--ludo-low-line) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    );
+}
+
+.ludo-home-tri::after {
+  content: none;
+}
+
+.ludo-token {
+  width: 58%;
+  height: 58%;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  background: transparent;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+.ludo-token.red {
+  background: var(--ludo-token-red);
+}
+
+.ludo-token.green {
+  background: var(--ludo-token-green);
+}
+
+.ludo-token.yellow {
+  background: var(--ludo-token-yellow);
+}
+
+.ludo-token.blue {
+  background: var(--ludo-token-blue);
+}
+
+.ludo-token.legal {
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--vscode-focusBorder, #fff);
+}
+
+.ludo-token:disabled {
+  opacity: 1;
+}
+
+.ludo-token.moving {
+  position: absolute;
+  width: calc(100% / 15 * 0.58);
+  height: calc(100% / 15 * 0.58);
+  margin: 0;
+  z-index: 6;
+  pointer-events: none;
+  will-change: left, top;
+}
+
+.ludo-dice {
+  margin: 0;
+  font-weight: 600;
+}
+
+.chosen-game {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.field select {
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  background: var(--vscode-input-background, transparent);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font: inherit;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+/* High GUI: dark jewel-tone board with classic Ludo detailing */
+body.gui-high {
+  --ludo-red: #8b1515;
+  --ludo-red-deep: #5c0e0e;
+  --ludo-red-bright: #c62828;
+  --ludo-green: #14532d;
+  --ludo-green-deep: #0b3d1f;
+  --ludo-green-bright: #2e7d32;
+  --ludo-yellow: #a67c00;
+  --ludo-yellow-deep: #6e5200;
+  --ludo-yellow-bright: #e0a800;
+  --ludo-blue: #0b3d91;
+  --ludo-blue-deep: #072a63;
+  --ludo-blue-bright: #1565c0;
+  --ludo-track: #d9cbb3;
+  --ludo-track-line: #2a2118;
+  --ludo-nest: #efe4cf;
+  --ludo-wood-outer: #1a120c;
+  --ludo-wood-inner: #3b2a1c;
+  --ludo-wood-mid: #5a4030;
+}
+
+body.gui-high .ludo-board {
+  border: 5px solid var(--ludo-wood-outer);
+  border-radius: 4px;
+  background:
+    linear-gradient(145deg, rgba(90, 64, 48, 0.35), transparent 42%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.015) 0 1px,
+      transparent 1px 7px
+    ),
+    linear-gradient(180deg, #2c2118, #1a140f);
+  box-shadow:
+    inset 0 0 0 2px var(--ludo-wood-mid),
+    inset 0 0 0 4px var(--ludo-wood-inner),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+body.gui-high .ludo-cell.track {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.18), transparent 55%),
+    var(--ludo-track);
+  box-shadow: inset 0 0 0 1px rgba(42, 33, 24, 0.55);
+}
+
+body.gui-high .ludo-cell.home.red {
+  background:
+    linear-gradient(90deg, var(--ludo-red-deep), var(--ludo-red));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+body.gui-high .ludo-cell.home.green {
+  background:
+    linear-gradient(180deg, var(--ludo-green-deep), var(--ludo-green));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+body.gui-high .ludo-cell.home.yellow {
+  background:
+    linear-gradient(270deg, var(--ludo-yellow-deep), var(--ludo-yellow));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+body.gui-high .ludo-cell.home.blue {
+  background:
+    linear-gradient(0deg, var(--ludo-blue-deep), var(--ludo-blue));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+body.gui-high .ludo-cell.yard.red {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.08), transparent 45%),
+    linear-gradient(145deg, var(--ludo-red), var(--ludo-red-deep));
+  box-shadow: none;
+}
+
+body.gui-high .ludo-cell.yard.green {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.08), transparent 45%),
+    linear-gradient(145deg, var(--ludo-green), var(--ludo-green-deep));
+  box-shadow: none;
+}
+
+body.gui-high .ludo-cell.yard.yellow {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.1), transparent 45%),
+    linear-gradient(145deg, var(--ludo-yellow), var(--ludo-yellow-deep));
+  box-shadow: none;
+}
+
+body.gui-high .ludo-cell.yard.blue {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.08), transparent 45%),
+    linear-gradient(145deg, var(--ludo-blue), var(--ludo-blue-deep));
+  box-shadow: none;
+}
+
+/* 4×4 nest cells stay clear so the nest panel + color ring show through */
+body.gui-high .ludo-cell.yard.nest {
+  background: transparent;
+  box-shadow: none;
+}
+
+body.gui-high .ludo-yard-nest {
+  border-radius: 5px;
+  background: var(--ludo-nest);
+  box-shadow:
+    inset 0 0 0 2px rgba(42, 33, 24, 0.28),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+body.gui-high .ludo-yard-pad {
+  display: block;
+  position: absolute;
+  width: 22%;
+  height: 22%;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: 2px solid var(--nest-ring, #888);
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.35), transparent 55%),
+    rgba(255, 255, 255, 0.22);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.45),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.12);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+body.gui-high .ludo-yard-nest.red {
+  --nest-ring: var(--ludo-red-bright);
+}
+
+body.gui-high .ludo-yard-nest.green {
+  --nest-ring: var(--ludo-green-bright);
+}
+
+body.gui-high .ludo-yard-nest.yellow {
+  --nest-ring: var(--ludo-yellow-bright);
+}
+
+body.gui-high .ludo-yard-nest.blue {
+  --nest-ring: var(--ludo-blue-bright);
+}
+
+body.gui-high .ludo-yard-nest .ludo-token.yard-spot {
+  width: 16%;
+  height: 16%;
+  min-width: 0;
+  min-height: 0;
+  border: 1.5px solid rgba(0, 0, 0, 0.55);
+}
+
+body.gui-high .ludo-yard-nest .ludo-token.yard-spot.red {
+  background:
+    radial-gradient(circle at 32% 28%, #ef5350, var(--ludo-red) 48%, var(--ludo-red-deep));
+}
+
+body.gui-high .ludo-yard-nest .ludo-token.yard-spot.green {
+  background:
+    radial-gradient(circle at 32% 28%, #66bb6a, var(--ludo-green) 48%, var(--ludo-green-deep));
+}
+
+body.gui-high .ludo-yard-nest .ludo-token.yard-spot.yellow {
+  background:
+    radial-gradient(circle at 32% 28%, #ffe082, var(--ludo-yellow-bright) 48%, var(--ludo-yellow-deep));
+}
+
+body.gui-high .ludo-yard-nest .ludo-token.yard-spot.blue {
+  background:
+    radial-gradient(circle at 32% 28%, #64b5f6, var(--ludo-blue) 48%, var(--ludo-blue-deep));
+}
+
+body.gui-high .ludo-cell.start.red {
+  background:
+    linear-gradient(145deg, var(--ludo-red-bright), var(--ludo-red-deep));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+body.gui-high .ludo-cell.start.green {
+  background:
+    linear-gradient(145deg, var(--ludo-green-bright), var(--ludo-green-deep));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+body.gui-high .ludo-cell.start.yellow {
+  background:
+    linear-gradient(145deg, var(--ludo-yellow-bright), var(--ludo-yellow-deep));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+body.gui-high .ludo-cell.start.blue {
+  background:
+    linear-gradient(145deg, var(--ludo-blue-bright), var(--ludo-blue-deep));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+body.gui-high .ludo-cell.start::before {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body.gui-high .ludo-cell.start.yellow::before {
+  color: rgba(40, 28, 0, 0.9);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+body.gui-high .ludo-cell.start.red::before {
+  content: '→';
+}
+
+body.gui-high .ludo-cell.start.green::before {
+  content: '↓';
+}
+
+body.gui-high .ludo-cell.start.yellow::before {
+  content: '←';
+}
+
+body.gui-high .ludo-cell.start.blue::before {
+  content: '↑';
+}
+
+body.gui-high .ludo-cell.star::after {
+  content: '✦';
+  font-size: 10px;
+  color: #8a6a12;
+  opacity: 1;
+  text-shadow:
+    0 0 2px rgba(255, 214, 90, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.35);
+  z-index: 0;
+}
+
+body.gui-high .ludo-cell.star.start::after {
+  display: none;
+}
+
+body.gui-high .ludo-cell.center {
+  background: transparent;
+  box-shadow: none;
+  z-index: 1;
+}
+
+body.gui-high .ludo-home-tri {
+  background: conic-gradient(
+    from -45deg,
+    var(--ludo-green) 0deg 90deg,
+    var(--ludo-yellow) 90deg 180deg,
+    var(--ludo-blue) 180deg 270deg,
+    var(--ludo-red) 270deg 360deg
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+body.gui-high .ludo-home-tri::before {
+  inset: 38%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.22), transparent 50%),
+    radial-gradient(circle at 50% 50%, #2a2118, #120e0a);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(212, 175, 55, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+body.gui-high .ludo-home-tri::after {
+  content: 'HOME';
+  position: relative;
+  z-index: 1;
+  font-size: 6px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #e8d5a3;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+
+body.gui-high .ludo-token {
+  width: 62%;
+  height: 62%;
+  border: 1.5px solid rgba(0, 0, 0, 0.55);
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.35),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.35),
+    0 2px 3px rgba(0, 0, 0, 0.4);
+}
+
+body.gui-high .ludo-token.red {
+  background:
+    radial-gradient(circle at 32% 28%, #ef5350, var(--ludo-red) 48%, var(--ludo-red-deep));
+}
+
+body.gui-high .ludo-token.green {
+  background:
+    radial-gradient(circle at 32% 28%, #66bb6a, var(--ludo-green) 48%, var(--ludo-green-deep));
+}
+
+body.gui-high .ludo-token.yellow {
+  background:
+    radial-gradient(circle at 32% 28%, #ffe082, var(--ludo-yellow-bright) 48%, var(--ludo-yellow-deep));
+}
+
+body.gui-high .ludo-token.blue {
+  background:
+    radial-gradient(circle at 32% 28%, #64b5f6, var(--ludo-blue) 48%, var(--ludo-blue-deep));
+}
+
+body.gui-high .ludo-token.legal {
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.35),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.35),
+    0 0 0 2px var(--vscode-focusBorder, #fff),
+    0 0 8px rgba(255, 214, 90, 0.45);
+}
+
+body.gui-high .ludo-dice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(90, 64, 48, 0.65);
+  background:
+    linear-gradient(180deg, rgba(90, 64, 48, 0.35), rgba(26, 18, 12, 0.55));
+  color: #efe4cf;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}

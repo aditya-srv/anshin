@@ -529,13 +529,15 @@ button#drawBtn:disabled {
 
 #menuScreen,
 #lobbyScreen,
-#gameScreen {
+#gameScreen,
+#ludoScreen {
   flex: 1;
   min-height: 0;
 }
 
 #menuScreen,
-#lobbyScreen {
+#lobbyScreen,
+#ludoScreen {
   overflow-y: auto;
 }
 

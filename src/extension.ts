@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
-import { UnoViewProvider } from './unoViewProvider';
+import { AnshinViewProvider } from './anshinViewProvider';
 
-let provider: UnoViewProvider | undefined;
+let provider: AnshinViewProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
-  provider = new UnoViewProvider(context.extensionUri);
+  provider = new AnshinViewProvider(context.extensionUri);
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(UnoViewProvider.viewType, provider),
+    vscode.window.registerWebviewViewProvider(AnshinViewProvider.viewType, provider),
     provider
   );
 }

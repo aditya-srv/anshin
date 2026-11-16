@@ -1,18 +1,9 @@
 import * as http from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
-import {
-  callUno,
-  catchUno,
-  chooseOpeningColor,
-  createGame,
-  drawCard,
-  dropPlayer,
-  personalize,
-  playCard,
-} from './engine';
-import { formatJoinUrls, getLanIPv4s, DEFAULT_UNO_PORT } from './lan';
+import { DEFAULT_GAME_ID, getGame, roomSeatCap } from '../games/registry';
+import { GameAction, GameModule, GameOptions, PersonalizeContext } from '../games/types';
+import { formatJoinUrls, getLanIPv4s, DEFAULT_ROOM_PORT } from './lan';
 import { ClientMessage, LobbyPlayer, parseClientMessage, ServerMessage } from './protocol';
-import { GameSnapshot, PersonalizedState, UnoColor } from './types';
 import {
   appendRoomToken,
   extractRoomTokenFromUrl,
@@ -45,7 +36,6 @@ const DEFAULT_HEARTBEAT_MS = 15_000;
 const DEFAULT_RETURN_TO_LOBBY_MS = 4000;
 const DEFAULT_RECONNECT_MS = 20_000;
 const DEFAULT_TURN_MS = 45_000;
-const MAX_PLAYERS = 6;
 const CLOSE_UNAUTHORIZED = 4001;
 const CLOSE_CAPACITY = 4002;
 const CLOSE_IDLE = 4003;
@@ -75,7 +65,7 @@ export interface RoomServerOptions {
   returnToLobbyMs?: number;
   /** How long a dropped seat is held. `0` removes it immediately. */
   reconnectMs?: number;
-  /** How long the current player has before the server draws for them. `0` disables. */
+  /** How long the current player has before the server applies a timeout. `0` disables. */
   turnMs?: number;
   /** Inbound messages allowed per socket each second. `0` disables. */
   maxMessageRate?: number;
@@ -101,7 +91,9 @@ export class RoomServer {
   private maxMessageRate = RATE_MAX_MESSAGES;
   private readonly alive = new WeakSet<WebSocket>();
   private phase: Phase = 'lobby';
-  private game: GameSnapshot | null = null;
+  private selectedGameId = DEFAULT_GAME_ID;
+  private active: GameModule | null = null;
+  private session: unknown = null;
   private nextId = 1;
   private port = 0;
   private joinUrl = '';
@@ -139,7 +131,7 @@ export class RoomServer {
   }
 
   static async start(options: RoomServerOptions = {}): Promise<RoomServer> {
-    const port = options.port ?? DEFAULT_UNO_PORT;
+    const port = options.port ?? DEFAULT_ROOM_PORT;
     const bindHost = options.bindHost?.trim() || '0.0.0.0';
     const persistent = options.persistent === true;
     const roomToken = options.roomToken?.trim() || generateRoomToken();
@@ -215,7 +207,8 @@ export class RoomServer {
     }
     this.disposed = true;
     this.phase = 'closed';
-    this.game = null;
+    this.active = null;
+    this.session = null;
 
     this.clearReturnTimer();
     this.clearTurnClock();
@@ -406,23 +399,14 @@ export class RoomServer {
       case 'join':
         this.handleJoin(ws, msg.name);
         break;
+      case 'setGame':
+        this.handleSetGame(ws, msg.game);
+        break;
       case 'start':
-        this.handleStart(ws, msg.guaranteeSpecial, msg.cardsPerPlayer);
+        this.handleStart(ws, msg.options ?? {});
         break;
-      case 'play':
-        this.handlePlay(ws, msg.cardId, msg.wildColor);
-        break;
-      case 'draw':
-        this.handleDraw(ws);
-        break;
-      case 'chooseColor':
-        this.handleChooseColor(ws, msg.color);
-        break;
-      case 'uno':
-        this.handleUno(ws);
-        break;
-      case 'catch':
-        this.handleCatch(ws);
+      case 'action':
+        this.handleAction(ws, msg.action);
         break;
       case 'leave':
         this.intentionalLeave.add(ws);
@@ -448,8 +432,8 @@ export class RoomServer {
       this.enqueueWaiter(ws, name);
       return;
     }
-    if (this.seats.size >= MAX_PLAYERS) {
-      this.send(ws, { type: 'error', reason: 'Room is full (max 6).' });
+    if (this.seats.size >= this.seatLimit()) {
+      this.send(ws, { type: 'error', reason: `Room is full (max ${this.seatLimit()}).` });
       ws.close();
       return;
     }
@@ -461,8 +445,8 @@ export class RoomServer {
   }
 
   private enqueueWaiter(ws: WebSocket, name: string): void {
-    if (this.seats.size + this.waiting.size >= MAX_PLAYERS) {
-      this.send(ws, { type: 'error', reason: 'Room is full (max 6).' });
+    if (this.seats.size + this.waiting.size >= this.seatLimit()) {
+      this.send(ws, { type: 'error', reason: `Room is full (max ${this.seatLimit()}).` });
       ws.close();
       return;
     }
@@ -498,8 +482,8 @@ export class RoomServer {
       this.broadcastLobby();
       return;
     }
-    if (this.phase === 'playing' && this.game) {
-      this.game.status = `${seat.name} reconnected.`;
+    if (this.phase === 'playing' && this.active && this.session != null) {
+      this.session = this.active.setStatus(this.session, `${seat.name} reconnected.`);
       this.broadcastGame();
       return;
     }
@@ -522,11 +506,29 @@ export class RoomServer {
     return seat;
   }
 
-  private handleStart(
-    ws: WebSocket,
-    guaranteeSpecial = true,
-    cardsPerPlayer = 7
-  ): void {
+  private handleSetGame(ws: WebSocket, gameId: string): void {
+    const seat = this.seatFor(ws);
+    if (!seat) {
+      this.send(ws, { type: 'error', reason: 'Join first.' });
+      return;
+    }
+    if (!seat.isHost) {
+      this.send(ws, { type: 'error', reason: 'Only the host can choose the game.' });
+      return;
+    }
+    if (this.phase !== 'lobby') {
+      this.send(ws, { type: 'error', reason: 'Game already started.' });
+      return;
+    }
+    if (!getGame(gameId)) {
+      this.send(ws, { type: 'error', reason: 'Unknown game.' });
+      return;
+    }
+    this.selectedGameId = gameId;
+    this.broadcastLobby();
+  }
+
+  private handleStart(ws: WebSocket, options: GameOptions = {}): void {
     const seat = this.seatFor(ws);
     if (!seat) {
       this.send(ws, { type: 'error', reason: 'Join first.' });
@@ -540,104 +542,60 @@ export class RoomServer {
       this.send(ws, { type: 'error', reason: 'Game already started.' });
       return;
     }
-    const connected = [...this.seats.values()].filter((item) => item.connected);
-    if (connected.length < 2) {
-      this.send(ws, { type: 'error', reason: 'Need at least 2 players.' });
+    const module = getGame(this.selectedGameId);
+    if (!module) {
+      this.send(ws, { type: 'error', reason: 'Unknown game.' });
+      return;
+    }
+    const seated = [...this.seats.values()];
+    const connected = seated.filter((item) => item.connected).length;
+    if (seated.length < module.minPlayers || seated.length > module.maxPlayers) {
+      this.send(ws, {
+        type: 'error',
+        reason: `${module.label} needs ${module.minPlayers}-${module.maxPlayers} players.`,
+      });
+      return;
+    }
+    if (connected < module.minPlayers) {
+      this.send(ws, { type: 'error', reason: `Need at least ${module.minPlayers} players.` });
       return;
     }
 
-    const players = [...this.seats.values()].map((s) => ({ id: s.id, name: s.name }));
-    this.game = createGame(
-      players,
-      Math.random,
-      undefined,
-      guaranteeSpecial,
-      cardsPerPlayer
-    );
+    try {
+      this.session = module.create(
+        seated.map((item) => ({ id: item.id, name: item.name })),
+        Math.random,
+        options
+      );
+    } catch (err) {
+      this.session = null;
+      this.active = null;
+      this.send(ws, {
+        type: 'error',
+        reason: err instanceof Error ? err.message : 'Could not start.',
+      });
+      return;
+    }
+    this.active = module;
     this.phase = 'playing';
     this.broadcastGame();
   }
 
-  private handlePlay(ws: WebSocket, cardId: string, wildColor?: 'red' | 'yellow' | 'green' | 'blue'): void {
+  private handleAction(ws: WebSocket, action: GameAction): void {
     const seat = this.seatFor(ws);
-    if (!seat || !this.game || this.phase !== 'playing') {
+    if (!seat || !this.active || this.session == null || this.phase !== 'playing') {
       this.send(ws, { type: 'error', reason: 'No active game.' });
       return;
     }
-
-    const result = playCard(this.game, seat.id, cardId, wildColor);
+    const result = this.active.apply(this.session, seat.id, action);
     if (!result.ok) {
       this.send(ws, { type: 'error', reason: result.reason });
       return;
     }
-    this.game = result.game;
+    this.session = result.session;
     if (this.finishIfWon()) {
       return;
     }
-    this.broadcastGame();
-  }
-
-  private handleChooseColor(ws: WebSocket, color: UnoColor): void {
-    const seat = this.seatFor(ws);
-    if (!seat || !this.game || this.phase !== 'playing') {
-      this.send(ws, { type: 'error', reason: 'No active game.' });
-      return;
-    }
-
-    const result = chooseOpeningColor(this.game, seat.id, color);
-    if (!result.ok) {
-      this.send(ws, { type: 'error', reason: result.reason });
-      return;
-    }
-    this.game = result.game;
-    this.broadcastGame();
-  }
-
-  private handleUno(ws: WebSocket): void {
-    const seat = this.seatFor(ws);
-    if (!seat || !this.game || this.phase !== 'playing') {
-      this.send(ws, { type: 'error', reason: 'No active game.' });
-      return;
-    }
-
-    const result = callUno(this.game, seat.id);
-    if (!result.ok) {
-      this.send(ws, { type: 'error', reason: result.reason });
-      return;
-    }
-    this.game = result.game;
-    this.broadcastGame();
-  }
-
-  private handleCatch(ws: WebSocket): void {
-    const seat = this.seatFor(ws);
-    if (!seat || !this.game || this.phase !== 'playing') {
-      this.send(ws, { type: 'error', reason: 'No active game.' });
-      return;
-    }
-
-    const result = catchUno(this.game, seat.id);
-    if (!result.ok) {
-      this.send(ws, { type: 'error', reason: result.reason });
-      return;
-    }
-    this.game = result.game;
-    this.broadcastGame();
-  }
-
-  private handleDraw(ws: WebSocket): void {
-    const seat = this.seatFor(ws);
-    if (!seat || !this.game || this.phase !== 'playing') {
-      this.send(ws, { type: 'error', reason: 'No active game.' });
-      return;
-    }
-
-    const result = drawCard(this.game, seat.id);
-    if (!result.ok) {
-      this.send(ws, { type: 'error', reason: result.reason });
-      return;
-    }
-    this.game = result.game;
     this.broadcastGame();
   }
 
@@ -670,8 +628,8 @@ export class RoomServer {
       this.broadcastLobby();
       return;
     }
-    if (this.game) {
-      this.game.status = text;
+    if (this.active && this.session != null) {
+      this.session = this.active.setStatus(this.session, text);
     }
     if (this.phase === 'playing') {
       this.broadcastGame();
@@ -737,7 +695,7 @@ export class RoomServer {
     if (this.phase === 'finished') {
       if (this.seats.size === 0) {
         this.clearReturnTimer();
-        this.game = null;
+        this.clearSession();
         this.phase = 'lobby';
         this.seatWaiters();
         this.ensureHost();
@@ -748,12 +706,12 @@ export class RoomServer {
       return;
     }
 
-    if (!this.game) {
+    if (!this.active || this.session == null) {
       return;
     }
-    this.game = dropPlayer(this.game, seat.id);
-    if (this.game.players.length === 0) {
-      this.game = null;
+    this.session = this.active.dropPlayer(this.session, seat.id);
+    if (this.active.playerIds(this.session).length === 0) {
+      this.clearSession();
       this.clearTurnClock();
       this.phase = 'lobby';
       this.seatWaiters();
@@ -770,7 +728,7 @@ export class RoomServer {
   }
 
   private finishIfWon(): boolean {
-    if (!this.game?.winnerId) {
+    if (!this.active || this.session == null || !this.active.winner(this.session)) {
       return false;
     }
     this.clearTurnClock();
@@ -781,7 +739,7 @@ export class RoomServer {
   }
 
   private seatWaiters(): void {
-    while (this.waiting.size > 0 && this.seats.size < MAX_PLAYERS) {
+    while (this.waiting.size > 0 && this.seats.size < this.seatLimit()) {
       const next = this.waiting.entries().next().value as [WebSocket, Waiter] | undefined;
       if (!next) {
         return;
@@ -810,17 +768,19 @@ export class RoomServer {
 
   private armTurnClock(): void {
     this.clearTurnClock();
-    if (!this.game || this.phase !== 'playing' || this.game.winnerId || this.turnMs <= 0) {
+    if (!this.active || this.session == null || this.phase !== 'playing' || this.turnMs <= 0) {
       return;
     }
-    const current = this.game.players[this.game.currentPlayerIndex];
-    const seat = current ? this.seats.get(current.id) : undefined;
+    if (this.active.winner(this.session)) {
+      return;
+    }
+    const playerId = this.active.currentPlayerId(this.session);
+    const seat = playerId ? this.seats.get(playerId) : undefined;
     if (!seat?.connected) {
       return;
     }
     this.turnDeadline = Date.now() + this.turnMs;
     const token = this.turnToken;
-    const playerId = current.id;
     const timer = setTimeout(() => {
       if (token !== this.turnToken) {
         return;
@@ -832,38 +792,17 @@ export class RoomServer {
   }
 
   private onTurnTimeout(playerId: string): void {
-    if (!this.game || this.phase !== 'playing' || this.game.winnerId) {
+    if (!this.active || this.session == null || this.phase !== 'playing') {
       return;
     }
-    const current = this.game.players[this.game.currentPlayerIndex];
-    if (!current || current.id !== playerId) {
+    if (this.active.winner(this.session) || this.active.currentPlayerId(this.session) !== playerId) {
       return;
     }
     const seat = this.seats.get(playerId);
     if (!seat?.connected) {
       return;
     }
-    if (this.game.awaitingWildColor) {
-      const chosen = chooseOpeningColor(this.game, playerId, 'red');
-      if (!chosen.ok) {
-        return;
-      }
-      this.game = chosen.game;
-      this.game.status = `${seat.name} timed out. Color set to red.`;
-      this.broadcastGame();
-      return;
-    }
-    const drawn = drawCard(this.game, playerId);
-    if (!drawn.ok) {
-      this.send(seat.ws, { type: 'error', reason: drawn.reason });
-      this.armTurnClock();
-      return;
-    }
-    this.game = drawn.game;
-    const turnName = this.game.players[this.game.currentPlayerIndex]?.name ?? 'Next';
-    if (!this.game.winnerId) {
-      this.game.status = `${seat.name} timed out and drew a card. ${turnName}'s turn.`;
-    }
+    this.session = this.active.onTimeout(this.session, playerId, Math.random);
     if (this.finishIfWon()) {
       return;
     }
@@ -896,7 +835,7 @@ export class RoomServer {
 
   private returnSeatsToLobby(): void {
     this.clearTurnClock();
-    this.game = null;
+    this.clearSession();
     this.phase = 'lobby';
     this.seatWaiters();
     this.ensureHost();
@@ -910,7 +849,7 @@ export class RoomServer {
     this.clearReturnTimer();
     this.clearTurnClock();
     this.clearAllGrace();
-    this.game = null;
+    this.clearSession();
     this.phase = 'lobby';
     this.endSockets(reason);
     this.seatWaiters();
@@ -929,7 +868,7 @@ export class RoomServer {
     this.clearTurnClock();
     this.clearAllGrace();
     this.phase = 'closed';
-    this.game = null;
+    this.clearSession();
     this.endSockets(reason);
   }
 
@@ -950,14 +889,20 @@ export class RoomServer {
   }
 
   private broadcastLobby(): void {
+    const module = getGame(this.selectedGameId);
     const connected = [...this.seats.values()].filter((seat) => seat.connected).length;
+    const seated = this.seats.size;
     const players: LobbyPlayer[] = [...this.seats.values()].map((s) => ({
       id: s.id,
       name: s.name,
       isHost: s.isHost,
       connected: s.connected,
     }));
-    const canStart = connected >= 2 && this.seats.size <= MAX_PLAYERS;
+    const canStart = !!module &&
+      connected >= module.minPlayers &&
+      connected <= module.maxPlayers &&
+      seated >= module.minPlayers &&
+      seated <= module.maxPlayers;
 
     for (const seat of this.seats.values()) {
       const msg: ServerMessage = {
@@ -968,6 +913,7 @@ export class RoomServer {
         canStart,
         youAreHost: seat.isHost,
         yourPlayerId: seat.id,
+        game: this.selectedGameId,
         resumeToken: seat.resumeToken,
       };
       this.send(seat.ws, msg);
@@ -975,48 +921,62 @@ export class RoomServer {
   }
 
   private broadcastGame(): void {
-    if (!this.game) {
+    if (!this.active || this.session == null) {
       return;
     }
     this.armTurnClock();
+    const ids = new Set(this.active.playerIds(this.session));
     for (const seat of this.seats.values()) {
-      if (!this.game.players.some((player) => player.id === seat.id)) {
+      if (!ids.has(seat.id)) {
         continue;
       }
-      const state = this.decorate(personalize(this.game, seat.id));
-      this.send(seat.ws, { type: 'state', state, resumeToken: seat.resumeToken });
-    }
-  }
-
-  private broadcastGameOver(): void {
-    if (!this.game || !this.game.winnerId) {
-      return;
-    }
-    const winner = this.game.players.find((p) => p.id === this.game!.winnerId);
-    for (const seat of this.seats.values()) {
-      if (!this.game.players.some((player) => player.id === seat.id)) {
-        continue;
-      }
-      const state = this.decorate(personalize(this.game, seat.id));
       this.send(seat.ws, {
-        type: 'gameOver',
-        state,
-        winnerId: this.game.winnerId,
-        winnerName: winner?.name ?? 'Someone',
+        type: 'state',
+        game: this.active.id,
+        state: this.active.personalize(this.session, seat.id, this.personalizeContext()),
         resumeToken: seat.resumeToken,
       });
     }
   }
 
-  private decorate(state: PersonalizedState): PersonalizedState {
+  private broadcastGameOver(): void {
+    if (!this.active || this.session == null) {
+      return;
+    }
+    const winner = this.active.winner(this.session);
+    if (!winner) {
+      return;
+    }
+    const ids = new Set(this.active.playerIds(this.session));
+    for (const seat of this.seats.values()) {
+      if (!ids.has(seat.id)) {
+        continue;
+      }
+      this.send(seat.ws, {
+        type: 'gameOver',
+        game: this.active.id,
+        state: this.active.personalize(this.session, seat.id, this.personalizeContext()),
+        winnerId: winner.id,
+        winnerName: winner.name,
+        resumeToken: seat.resumeToken,
+      });
+    }
+  }
+
+  private personalizeContext(): PersonalizeContext {
     return {
-      ...state,
       turnDeadline: this.turnDeadline,
-      opponents: state.opponents.map((opponent) => ({
-        ...opponent,
-        connected: this.seats.get(opponent.id)?.connected !== false,
-      })),
+      connected: (id: string) => this.seats.get(id)?.connected !== false,
     };
+  }
+
+  private clearSession(): void {
+    this.active = null;
+    this.session = null;
+  }
+
+  private seatLimit(): number {
+    return getGame(this.selectedGameId)?.maxPlayers ?? roomSeatCap();
   }
 
   private send(ws: WebSocket | null, msg: ServerMessage): void {

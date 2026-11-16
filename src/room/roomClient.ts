@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
+import { GameAction, GameOptions } from '../games/types';
 import { ClientMessage, ServerMessage } from './protocol';
-import { UnoColor } from './types';
 
 export type RoomClientHandler = (message: ServerMessage) => void;
 
@@ -130,28 +130,16 @@ export class RoomClient {
     this.send({ type: 'resume', token });
   }
 
-  start(guaranteeSpecial = true, cardsPerPlayer = 7): void {
-    this.send({ type: 'start', guaranteeSpecial, cardsPerPlayer });
+  setGame(game: string): void {
+    this.send({ type: 'setGame', game });
   }
 
-  play(cardId: string, wildColor?: UnoColor): void {
-    this.send({ type: 'play', cardId, wildColor });
+  start(options: GameOptions = {}): void {
+    this.send({ type: 'start', options });
   }
 
-  draw(): void {
-    this.send({ type: 'draw' });
-  }
-
-  chooseColor(color: UnoColor): void {
-    this.send({ type: 'chooseColor', color });
-  }
-
-  callUno(): void {
-    this.send({ type: 'uno' });
-  }
-
-  catchUno(): void {
-    this.send({ type: 'catch' });
+  action(action: GameAction): void {
+    this.send({ type: 'action', action });
   }
 
   leave(): void {

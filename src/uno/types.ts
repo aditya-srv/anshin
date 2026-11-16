@@ -72,11 +72,13 @@ export interface OpponentPublic {
   connected?: boolean;
 }
 
+export type HandCard = UnoCard & { playable?: boolean };
+
 export interface PersonalizedState {
   opponents: OpponentPublic[];
   discard: UnoCard;
   currentColor: UnoColor;
-  hand: UnoCard[];
+  hand: HandCard[];
   drawRemaining: number;
   currentPlayerId: string;
   yourPlayerId: string;

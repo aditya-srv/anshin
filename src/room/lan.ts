@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import * as os from 'os';
 
-export const DEFAULT_UNO_PORT = 3847;
+export const DEFAULT_ROOM_PORT = 3847;
 
 export interface LanInterface {
   name: string;

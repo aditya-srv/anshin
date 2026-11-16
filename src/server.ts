@@ -1,13 +1,13 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { DEFAULT_UNO_PORT } from './uno/lan';
-import { RoomServer } from './uno/roomServer';
+import { DEFAULT_ROOM_PORT } from './room/lan';
+import { RoomServer } from './room/roomServer';
 import {
   generateRoomToken,
   isValidBindHost,
   isValidPublicHost,
   isValidPublicUrl,
-} from './uno/urlAuth';
+} from './room/urlAuth';
 
 function redactRoomToken(url: string): string {
   try {
@@ -25,7 +25,7 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 async function main(): Promise<void> {
   const portRaw = process.env.PORT?.trim();
-  const port = portRaw ? Number(portRaw) : DEFAULT_UNO_PORT;
+  const port = portRaw ? Number(portRaw) : DEFAULT_ROOM_PORT;
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     console.error(`Invalid PORT: ${portRaw}`);
     process.exit(1);
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
     roomToken,
   });
 
-  console.log(`Anshin UNO room listening on ${bindHost}:${server.getPort()}`);
+  console.log(`Anshin room listening on ${bindHost}:${server.getPort()}`);
   if (tokenFromEnv) {
     console.log(`Join URL: ${redactRoomToken(server.getJoinUrl())}`);
   } else {

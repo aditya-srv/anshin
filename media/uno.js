@@ -21,8 +21,11 @@
   const lobbyList = document.getElementById('lobbyList');
   const startBtn = document.getElementById('startBtn');
   const hostOpts = document.getElementById('hostOpts');
+  const gameSelect = document.getElementById('gameSelect');
+  const chosenGame = document.getElementById('chosenGame');
   const cardsPerPlayerInput = document.getElementById('cardsPerPlayerInput');
   const guaranteeSpecialInput = document.getElementById('guaranteeSpecialInput');
+  const ludoScreen = document.getElementById('ludoScreen');
   const leaveLobbyBtn = document.getElementById('leaveLobbyBtn');
   const lobbyStatus = document.getElementById('lobbyStatus');
   const discardEl = document.getElementById('discard');
@@ -52,6 +55,12 @@
         Number(b.getAttribute('data-seat-slot'))
       );
     });
+
+  /** Local Uno UX only — same idea as AnshinLudo owning roll/move clicks. */
+  var selectedId = null;
+  var pendingWildCardId = null;
+  var localStatus = null;
+  var handFingerprint = '';
 
   function setHostMode(mode) {
     hostMode = mode === 'remote' ? 'remote' : 'local';
@@ -95,6 +104,19 @@
     vscode.postMessage({ type: 'join', name: nameInput.value, url: urlInput.value });
   });
 
+  if (window.AnshinLudo) {
+    window.AnshinLudo.bind(function (message) {
+      vscode.postMessage(message);
+    });
+  }
+
+  if (gameSelect) {
+    gameSelect.addEventListener('change', function () {
+      showGameSettings(gameSelect.value);
+      vscode.postMessage({ type: 'setGame', game: gameSelect.value });
+    });
+  }
+
   startBtn.addEventListener('click', function () {
     var cards = 7;
     if (cardsPerPlayerInput) {
@@ -124,24 +146,50 @@
   });
 
   drawBtn.addEventListener('click', function () {
-    vscode.postMessage({ type: 'draw' });
+    selectedId = null;
+    pendingWildCardId = null;
+    localStatus = null;
+    vscode.postMessage({ type: 'action', action: { type: 'draw' } });
   });
 
   unoBtn.addEventListener('click', function () {
-    vscode.postMessage({ type: 'callUno' });
+    vscode.postMessage({ type: 'action', action: { type: 'uno' } });
   });
 
   catchBtn.addEventListener('click', function () {
-    vscode.postMessage({ type: 'catchUno' });
+    vscode.postMessage({ type: 'action', action: { type: 'catch' } });
   });
 
   cancelWildBtn.addEventListener('click', function () {
-    vscode.postMessage({ type: 'cancelWild' });
+    var game = rendered && rendered.game;
+    if (game && game.awaitingWildColor) {
+      return;
+    }
+    pendingWildCardId = null;
+    localStatus = null;
+    if (rendered) {
+      render(rendered);
+    }
   });
 
   wildPicker.querySelectorAll('.wild-color').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      vscode.postMessage({ type: 'chooseWildColor', color: btn.getAttribute('data-color') });
+      var color = btn.getAttribute('data-color');
+      var game = rendered && rendered.game;
+      if (game && game.awaitingWildColor) {
+        vscode.postMessage({ type: 'action', action: { type: 'chooseColor', color: color } });
+        return;
+      }
+      if (!pendingWildCardId) {
+        return;
+      }
+      vscode.postMessage({
+        type: 'action',
+        action: { type: 'play', cardId: pendingWildCardId, wildColor: color },
+      });
+      selectedId = null;
+      pendingWildCardId = null;
+      localStatus = null;
     });
   });
 
@@ -185,15 +233,43 @@
     return value;
   }
 
-  function showScreen(screen) {
+  function showGameSettings(gameId) {
+    var blocks = document.querySelectorAll('.game-settings');
+    for (var i = 0; i < blocks.length; i++) {
+      blocks[i].classList.toggle('hidden', blocks[i].id !== 'settings-' + gameId);
+    }
+  }
+
+  function gameLabel(gameId) {
+    if (!gameSelect) {
+      return gameId || 'Uno';
+    }
+    var options = gameSelect.options;
+    for (var i = 0; i < options.length; i++) {
+      if (options[i].value === gameId) {
+        return options[i].textContent || gameId;
+      }
+    }
+    return gameId || 'Uno';
+  }
+
+  function showScreen(screen, gameId) {
+    var ludo = screen === 'game' && gameId === 'ludo';
     menuScreen.classList.toggle('hidden', screen !== 'menu');
     lobbyScreen.classList.toggle('hidden', screen !== 'lobby');
-    gameScreen.classList.toggle('hidden', screen !== 'game');
+    gameScreen.classList.toggle('hidden', screen !== 'game' || ludo);
+    if (ludoScreen) {
+      ludoScreen.classList.toggle('hidden', !ludo);
+    }
   }
 
   let rendered = null;
   setInterval(function () {
     if (!rendered || rendered.screen !== 'game' || !rendered.game || !rendered.game.turnDeadline) {
+      return;
+    }
+    if (rendered.gameId === 'ludo' && window.AnshinLudo) {
+      window.AnshinLudo.render(rendered.game);
       return;
     }
     renderTurnLine(rendered.game, normalizeMode(rendered.guiMode) === 'ultra', rendered.yourName);
@@ -211,10 +287,10 @@
     guiLowBtn.classList.toggle('active', mode === 'low');
     guiHighBtn.classList.toggle('active', mode === 'high');
 
-    showScreen(state.screen);
+    showScreen(state.screen, state.gameId);
 
     if (unoDockBar) {
-      unoDockBar.classList.toggle('hidden', state.screen !== 'game');
+      unoDockBar.classList.toggle('hidden', state.screen !== 'game' || state.gameId === 'ludo');
     }
 
     if (state.screen === 'menu') {
@@ -235,13 +311,23 @@
     }
 
     if (state.screen === 'lobby') {
-      appTitleEl.textContent = ultra ? 'Anshin · lobby' : 'Anshin · UNO · Lobby';
+      appTitleEl.textContent = ultra ? 'Anshin · lobby' : 'Anshin · Lobby';
       joinUrlDisplay.textContent = state.joinUrl || '';
       renderJoinUrls(state.joinUrls, state.joinUrl);
       lobbyStatus.textContent = state.status || '';
       renderUnoSaid(null, ultra);
-      startBtn.disabled = !state.youAreHost || !state.canStart;
-      startBtn.classList.toggle('hidden', !state.youAreHost);
+      var selected = state.selectedGame || 'uno';
+      if (gameSelect && document.activeElement !== gameSelect) {
+        gameSelect.value = selected;
+      }
+      showGameSettings(gameSelect ? gameSelect.value : selected);
+      if (chosenGame) {
+        chosenGame.textContent = gameLabel(selected);
+        chosenGame.classList.toggle('hidden', !!state.youAreHost);
+      }
+      if (startBtn) {
+        startBtn.disabled = !state.youAreHost || !state.canStart;
+      }
       if (hostOpts) {
         hostOpts.classList.toggle('hidden', !state.youAreHost);
       }
@@ -249,10 +335,20 @@
       return;
     }
 
+    if (state.gameId === 'ludo') {
+      appTitleEl.textContent = 'Anshin · Ludo';
+      if (window.AnshinLudo) {
+        window.AnshinLudo.render(state.game);
+      }
+      return;
+    }
+
     const game = state.game;
     if (!game) {
       return;
     }
+
+    syncUnoSelection(game);
 
     const n = game.playerCount || 2;
     const myTurn = game.currentPlayerId === game.yourPlayerId && !game.winnerId;
@@ -266,7 +362,7 @@
     renderOpponents(game.opponents || [], ultra, game.currentPlayerId, game.winnerId);
     renderTurnLine(game, ultra, state.yourName);
     renderDiscard(game.discard, ultra);
-    renderHand(game.hand, state.selectedId, ultra);
+    renderHand(game.hand, selectedId, ultra);
 
     const handCount = (game.hand || []).length;
     youCountEl.textContent = ultra ? handCount + ' items' : handCount + ' cards';
@@ -275,7 +371,7 @@
       yourSeat.classList.toggle('your-turn', myTurn);
     }
 
-    statusEl.textContent = state.status || game.status || '';
+    statusEl.textContent = localStatus || state.status || game.status || '';
 
     drawBtn.disabled = !myTurn || !!game.awaitingWildColor;
     if (ultra) {
@@ -293,10 +389,75 @@
     renderUnoSaid(game.unoSaid, ultra);
 
     const choosingOpening = !!game.awaitingWildColor && game.currentPlayerId === game.yourPlayerId;
-    wildPicker.classList.toggle('hidden', !state.pendingWildCardId && !choosingOpening);
+    wildPicker.classList.toggle('hidden', !pendingWildCardId && !choosingOpening);
     if (cancelWildBtn) {
       cancelWildBtn.classList.toggle('hidden', choosingOpening);
     }
+  }
+
+  function syncUnoSelection(game) {
+    var next =
+      (game.hand || [])
+        .map(function (card) {
+          return card.id;
+        })
+        .join(',') +
+      '|' +
+      game.currentPlayerId +
+      '|' +
+      String(!!game.awaitingWildColor) +
+      '|' +
+      String(game.winnerId || '');
+    if (next !== handFingerprint) {
+      handFingerprint = next;
+      selectedId = null;
+      pendingWildCardId = null;
+      localStatus = null;
+    }
+  }
+
+  function formatCardLabel(card) {
+    if (card.value === 'wild' || card.value === 'wild4') {
+      return card.value === 'wild4' ? 'Wild Draw Four' : 'Wild';
+    }
+    var color = card.color ? card.color.charAt(0).toUpperCase() + card.color.slice(1) : '';
+    return color + ' ' + card.value;
+  }
+
+  function onHandCardClick(card) {
+    if (card.playable === false) {
+      return;
+    }
+    var game = rendered && rendered.game;
+    if (!game || game.winnerId) {
+      return;
+    }
+    if (game.awaitingWildColor) {
+      localStatus = 'Choose a color first.';
+      statusEl.textContent = localStatus;
+      return;
+    }
+    if (game.currentPlayerId !== game.yourPlayerId) {
+      localStatus = 'Not your turn.';
+      statusEl.textContent = localStatus;
+      return;
+    }
+    if (selectedId === card.id) {
+      if (card.value === 'wild' || card.value === 'wild4') {
+        pendingWildCardId = card.id;
+        localStatus = 'Choose a color.';
+        render(rendered);
+        return;
+      }
+      vscode.postMessage({ type: 'action', action: { type: 'play', cardId: card.id } });
+      selectedId = null;
+      localStatus = null;
+      return;
+    }
+    selectedId = card.id;
+    pendingWildCardId = null;
+    localStatus = 'Selected ' + formatCardLabel(card) + '. Click again to play.';
+    render(rendered);
   }
 
   function renderUnoSaid(unoSaid, ultra) {
@@ -428,21 +589,18 @@
     discardEl.appendChild(createFaceCard(card, false, ultra));
   }
 
-  function renderHand(hand, selectedId, ultra) {
+  function renderHand(hand, selectedCardId, ultra) {
     handEl.innerHTML = '';
     (hand || []).forEach(function (card) {
       const el = createFaceCard(card, true, ultra);
-      if (card.id === selectedId) {
+      if (card.id === selectedCardId) {
         el.classList.add('selected');
       }
       if (card.playable === false) {
         el.classList.add('unplayable');
       }
       el.addEventListener('click', function () {
-        if (card.playable === false) {
-          return;
-        }
-        vscode.postMessage({ type: 'select', cardId: card.id });
+        onHandCardClick(card);
       });
       handEl.appendChild(el);
     });

@@ -3,10 +3,10 @@ import crypto from 'crypto';
 import net from 'net';
 import { describe, it } from 'node:test';
 import WebSocket from 'ws';
-import { canPlay } from './engine';
+import { canPlay } from '../uno/engine';
+import { PersonalizedState } from '../uno/types';
 import { ServerMessage } from './protocol';
 import { RoomServer } from './roomServer';
-import { PersonalizedState } from './types';
 
 const TOKEN = 'room-token-test';
 
@@ -110,6 +110,13 @@ async function started(options: {
   });
 }
 
+function unoState(msg: ServerMessage): PersonalizedState {
+  if (msg.type !== 'state' && msg.type !== 'gameOver') {
+    throw new Error(`expected a hand snapshot, got ${msg.type}`);
+  }
+  return msg.state as PersonalizedState;
+}
+
 function openSilentSocket(port: number, token: string): Promise<net.Socket> {
   return new Promise((resolve, reject) => {
     const key = crypto.randomBytes(16).toString('base64');
@@ -179,8 +186,16 @@ describe('RoomServer', () => {
     const server = await started({});
     const ws = await connect(server.getJoinUrl());
     ws.on('error', () => undefined);
+    const closed = new Promise<void>((resolve) => {
+      if (ws.readyState === WebSocket.CLOSED) {
+        resolve();
+        return;
+      }
+      ws.once('close', () => resolve());
+    });
     try {
       await withTimeout(server.dispose(), 2000);
+      await withTimeout(closed, 2000);
       assert.notStrictEqual(ws.readyState, WebSocket.OPEN);
     } finally {
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
@@ -274,7 +289,7 @@ describe('RoomServer', () => {
       send(guest, { type: 'join', name: 'Bea' });
       await hostBox.until('lobby');
       await guestBox.until('lobby');
-      send(host, { type: 'start', guaranteeSpecial: false, cardsPerPlayer: 1 });
+      send(host, { type: 'start', options: { guaranteeSpecial: false, cardsPerPlayer: 1 } });
 
       let [left, right] = await Promise.all([hostBox.next(), guestBox.next()]);
       let winnerName = '';
@@ -291,19 +306,20 @@ describe('RoomServer', () => {
           const reason = left.type === 'error' ? left.reason : right.type === 'error' ? right.reason : left.type;
           throw new Error(`unexpected message: ${reason}`);
         }
-        const state: PersonalizedState =
-          left.state.currentPlayerId === left.state.yourPlayerId ? left.state : right.state;
-        const ws = left.state.currentPlayerId === left.state.yourPlayerId ? host : guest;
+        const leftState = unoState(left);
+        const rightState = unoState(right);
+        const state = leftState.currentPlayerId === leftState.yourPlayerId ? leftState : rightState;
+        const ws = leftState.currentPlayerId === leftState.yourPlayerId ? host : guest;
         if (state.awaitingWildColor) {
-          send(ws, { type: 'chooseColor', color: 'red' });
+          send(ws, { type: 'action', action: { type: 'chooseColor', color: 'red' } });
         } else {
           const card = state.hand.find((item) => canPlay(item, state.discard, state.currentColor));
           if (card && (card.value === 'wild' || card.value === 'wild4')) {
-            send(ws, { type: 'play', cardId: card.id, wildColor: 'red' });
+            send(ws, { type: 'action', action: { type: 'play', cardId: card.id, wildColor: 'red' } });
           } else if (card) {
-            send(ws, { type: 'play', cardId: card.id });
+            send(ws, { type: 'action', action: { type: 'play', cardId: card.id } });
           } else {
-            send(ws, { type: 'draw' });
+            send(ws, { type: 'action', action: { type: 'draw' } });
           }
         }
         [left, right] = await Promise.all([hostBox.next(), guestBox.next()]);
@@ -345,16 +361,16 @@ describe('RoomServer', () => {
       const token = joined.type === 'lobby' ? joined.resumeToken ?? '' : '';
       const playerId = joined.type === 'lobby' ? joined.yourPlayerId : '';
       assert.ok(token);
-      send(host, { type: 'start', guaranteeSpecial: false, cardsPerPlayer: 1 });
+      send(host, { type: 'start', options: { guaranteeSpecial: false, cardsPerPlayer: 1 } });
       await hostBox.until('state');
       const before = await guestBox.until('state');
       assert.strictEqual(before.type, 'state');
-      const handIds = before.type === 'state' ? before.state.hand.map((card) => card.id) : [];
+      const handIds = before.type === 'state' ? unoState(before).hand.map((card) => card.id) : [];
       guest.close();
       const away = await hostBox.until('state');
       assert.strictEqual(away.type, 'state');
       if (away.type === 'state') {
-        assert.strictEqual(away.state.opponents[0]?.connected, false);
+        assert.strictEqual(unoState(away).opponents[0]?.connected, false);
       }
 
       const again = await connect(server.getJoinUrl());
@@ -363,8 +379,8 @@ describe('RoomServer', () => {
       const restored = await againBox.until('state');
       assert.strictEqual(restored.type, 'state');
       if (restored.type === 'state') {
-        assert.strictEqual(restored.state.yourPlayerId, playerId);
-        assert.deepStrictEqual(restored.state.hand.map((card) => card.id), handIds);
+        assert.strictEqual(unoState(restored).yourPlayerId, playerId);
+        assert.deepStrictEqual(unoState(restored).hand.map((card) => card.id), handIds);
       }
       again.close();
     } finally {
@@ -385,7 +401,7 @@ describe('RoomServer', () => {
       await boxes[0].until('lobby');
       send(sockets[2], { type: 'join', name: 'Cy' });
       await boxes[0].until('lobby');
-      send(sockets[0], { type: 'start', guaranteeSpecial: false, cardsPerPlayer: 1 });
+      send(sockets[0], { type: 'start', options: { guaranteeSpecial: false, cardsPerPlayer: 1 } });
       await boxes[0].until('state');
       sockets[2].close();
       let players = 3;
@@ -393,7 +409,7 @@ describe('RoomServer', () => {
       while (players > 2 && Date.now() < deadline) {
         const msg = await boxes[0].until('state', 1000);
         if (msg.type === 'state') {
-          players = msg.state.playerCount;
+          players = unoState(msg).playerCount;
         }
       }
       assert.strictEqual(players, 2);
@@ -416,7 +432,7 @@ describe('RoomServer', () => {
       await hostBox.until('lobby');
       send(guest, { type: 'join', name: 'Bea' });
       await guestBox.until('lobby');
-      send(host, { type: 'start', guaranteeSpecial: false, cardsPerPlayer: 1 });
+      send(host, { type: 'start', options: { guaranteeSpecial: false, cardsPerPlayer: 1 } });
       await hostBox.until('state');
       guest.close();
       const over = await hostBox.until('gameOver', 1000);
@@ -469,12 +485,12 @@ describe('RoomServer', () => {
       await hostBox.until('lobby');
       send(guest, { type: 'join', name: 'Bea' });
       await guestBox.until('lobby');
-      send(host, { type: 'start', guaranteeSpecial: false, cardsPerPlayer: 1 });
+      send(host, { type: 'start', options: { guaranteeSpecial: false, cardsPerPlayer: 1 } });
       let timedOut = false;
       const deadline = Date.now() + 1000;
       while (!timedOut && Date.now() < deadline) {
         const msg = await hostBox.next(1000);
-        if (msg.type === 'state' && msg.state.status.includes('timed out')) {
+        if (msg.type === 'state' && unoState(msg).status.includes('timed out')) {
           timedOut = true;
         }
       }
@@ -500,7 +516,7 @@ describe('RoomServer', () => {
       send(guest, { type: 'join', name: 'Bea' });
       await hostBox.until('lobby');
       await guestBox.until('lobby');
-      send(host, { type: 'start', guaranteeSpecial: false, cardsPerPlayer: 1 });
+      send(host, { type: 'start', options: { guaranteeSpecial: false, cardsPerPlayer: 1 } });
       let [left, right] = await Promise.all([hostBox.next(), guestBox.next()]);
       send(late, { type: 'join', name: 'Cy' });
       const waiting = await lateBox.until('waiting');
@@ -511,18 +527,20 @@ describe('RoomServer', () => {
         if (left.type !== 'state' || right.type !== 'state') {
           throw new Error('unexpected message before the hand ended');
         }
-        const state = left.state.currentPlayerId === left.state.yourPlayerId ? left.state : right.state;
-        const ws = left.state.currentPlayerId === left.state.yourPlayerId ? host : guest;
+        const leftState = unoState(left);
+        const rightState = unoState(right);
+        const state = leftState.currentPlayerId === leftState.yourPlayerId ? leftState : rightState;
+        const ws = leftState.currentPlayerId === leftState.yourPlayerId ? host : guest;
         if (state.awaitingWildColor) {
-          send(ws, { type: 'chooseColor', color: 'red' });
+          send(ws, { type: 'action', action: { type: 'chooseColor', color: 'red' } });
         } else {
           const card = state.hand.find((item) => canPlay(item, state.discard, state.currentColor));
           if (card && (card.value === 'wild' || card.value === 'wild4')) {
-            send(ws, { type: 'play', cardId: card.id, wildColor: 'red' });
+            send(ws, { type: 'action', action: { type: 'play', cardId: card.id, wildColor: 'red' } });
           } else if (card) {
-            send(ws, { type: 'play', cardId: card.id });
+            send(ws, { type: 'action', action: { type: 'play', cardId: card.id } });
           } else {
-            send(ws, { type: 'draw' });
+            send(ws, { type: 'action', action: { type: 'draw' } });
           }
         }
         [left, right] = await Promise.all([hostBox.next(), guestBox.next()]);
@@ -557,7 +575,7 @@ describe('RoomServer', () => {
       send(guest, { type: 'join', name: 'Bea' });
       await hostBox.until('lobby');
       await guestBox.until('lobby');
-      send(host, { type: 'start', guaranteeSpecial: false, cardsPerPlayer: 1 });
+      send(host, { type: 'start', options: { guaranteeSpecial: false, cardsPerPlayer: 1 } });
       let [left, right] = await Promise.all([hostBox.next(), guestBox.next()]);
       send(late, { type: 'join', name: 'Cy' });
       const waiting = await lateBox.until('waiting');
@@ -568,18 +586,20 @@ describe('RoomServer', () => {
         if (left.type !== 'state' || right.type !== 'state') {
           throw new Error('unexpected message before the hand ended');
         }
-        const state = left.state.currentPlayerId === left.state.yourPlayerId ? left.state : right.state;
-        const ws = left.state.currentPlayerId === left.state.yourPlayerId ? host : guest;
+        const leftState = unoState(left);
+        const rightState = unoState(right);
+        const state = leftState.currentPlayerId === leftState.yourPlayerId ? leftState : rightState;
+        const ws = leftState.currentPlayerId === leftState.yourPlayerId ? host : guest;
         if (state.awaitingWildColor) {
-          send(ws, { type: 'chooseColor', color: 'red' });
+          send(ws, { type: 'action', action: { type: 'chooseColor', color: 'red' } });
         } else {
           const card = state.hand.find((item) => canPlay(item, state.discard, state.currentColor));
           if (card && (card.value === 'wild' || card.value === 'wild4')) {
-            send(ws, { type: 'play', cardId: card.id, wildColor: 'red' });
+            send(ws, { type: 'action', action: { type: 'play', cardId: card.id, wildColor: 'red' } });
           } else if (card) {
-            send(ws, { type: 'play', cardId: card.id });
+            send(ws, { type: 'action', action: { type: 'play', cardId: card.id } });
           } else {
-            send(ws, { type: 'draw' });
+            send(ws, { type: 'action', action: { type: 'draw' } });
           }
         }
         [left, right] = await Promise.all([hostBox.next(), guestBox.next()]);
@@ -600,6 +620,71 @@ describe('RoomServer', () => {
       host.close();
       guest.close();
       late.close();
+      await server.dispose();
+    }
+  });
+
+  it('follows the selected game when the host starts', async () => {
+    const server = await started({ persistent: true });
+    const sockets = await Promise.all(
+      ['Ada', 'Bea', 'Cy', 'Dee', 'Eve'].map(() => connect(server.getJoinUrl()))
+    );
+    try {
+      const boxes = sockets.map((ws) => new Inbox(ws));
+      for (let i = 0; i < sockets.length; i++) {
+        send(sockets[i], { type: 'join', name: ['Ada', 'Bea', 'Cy', 'Dee', 'Eve'][i] });
+        await boxes[0].until('lobby');
+      }
+      send(sockets[1], { type: 'setGame', game: 'ludo' });
+      const denied = await boxes[1].until('error');
+      assert.strictEqual(denied.type, 'error');
+
+      send(sockets[0], { type: 'setGame', game: 'ludo' });
+      const full = await boxes[0].until('lobby');
+      assert.strictEqual(full.type, 'lobby');
+      if (full.type === 'lobby') {
+        assert.strictEqual(full.game, 'ludo');
+        assert.strictEqual(full.canStart, false);
+      }
+      send(sockets[0], { type: 'start' });
+      const rejected = await boxes[0].until('error');
+      assert.strictEqual(rejected.type, 'error');
+      if (rejected.type === 'error') {
+        assert.match(rejected.reason, /Ludo needs 2-4/);
+      }
+
+      sockets[4].close();
+      sockets[3].close();
+      let trimmed = await boxes[0].until('lobby');
+      const deadline = Date.now() + 1000;
+      while (trimmed.type === 'lobby' && trimmed.players.length > 3 && Date.now() < deadline) {
+        trimmed = await boxes[0].until('lobby');
+      }
+      assert.strictEqual(trimmed.type, 'lobby');
+      if (trimmed.type === 'lobby') {
+        assert.strictEqual(trimmed.game, 'ludo');
+        assert.strictEqual(trimmed.players.length, 3);
+        assert.strictEqual(trimmed.canStart, true);
+      }
+      send(sockets[0], { type: 'start' });
+      const startedHand = await boxes[0].until('state');
+      assert.strictEqual(startedHand.type, 'state');
+      if (startedHand.type === 'state') {
+        assert.strictEqual(startedHand.game, 'ludo');
+        const state = startedHand.state as { awaiting: string; currentPlayerId: string };
+        assert.strictEqual(state.awaiting, 'roll');
+        send(sockets[0], { type: 'action', action: { type: 'roll' } });
+      }
+      const after = await boxes[0].until('state');
+      assert.strictEqual(after.type, 'state');
+      if (after.type === 'state') {
+        const state = after.state as { dice: number | null };
+        assert.ok(state.dice);
+      }
+    } finally {
+      for (const ws of sockets) {
+        ws.close();
+      }
       await server.dispose();
     }
   });

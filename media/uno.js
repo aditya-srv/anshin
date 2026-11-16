@@ -61,6 +61,7 @@
   var pendingWildCardId = null;
   var localStatus = null;
   var handFingerprint = '';
+  var catchEnableTimer = null;
 
   function setHostMode(mode) {
     hostMode = mode === 'remote' ? 'remote' : 'local';
@@ -157,6 +158,9 @@
   });
 
   catchBtn.addEventListener('click', function () {
+    if (catchBtn.disabled) {
+      return;
+    }
     vscode.postMessage({ type: 'action', action: { type: 'catch' } });
   });
 
@@ -386,6 +390,7 @@
 
     unoBtn.textContent = ultra ? 'Mark' : 'UNO';
     catchBtn.textContent = ultra ? 'Flag' : 'Catch';
+    updateCatchButton(game);
     renderUnoSaid(game.unoSaid, ultra);
 
     const choosingOpening = !!game.awaitingWildColor && game.currentPlayerId === game.yourPlayerId;
@@ -458,6 +463,33 @@
     pendingWildCardId = null;
     localStatus = 'Selected ' + formatCardLabel(card) + '. Click again to play.';
     render(rendered);
+  }
+
+  function clearCatchEnableTimer() {
+    if (catchEnableTimer) {
+      clearTimeout(catchEnableTimer);
+      catchEnableTimer = null;
+    }
+  }
+
+  /** Catch stays off for ~2s after a player goes to one card. */
+  function updateCatchButton(game) {
+    clearCatchEnableTimer();
+    var availableAt = game && game.catchAvailableAt;
+    if (typeof availableAt !== 'number') {
+      catchBtn.disabled = false;
+      return;
+    }
+    var wait = availableAt - Date.now();
+    if (wait <= 0) {
+      catchBtn.disabled = false;
+      return;
+    }
+    catchBtn.disabled = true;
+    catchEnableTimer = setTimeout(function () {
+      catchEnableTimer = null;
+      catchBtn.disabled = false;
+    }, wait);
   }
 
   function renderUnoSaid(unoSaid, ultra) {

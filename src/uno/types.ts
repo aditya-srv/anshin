@@ -58,6 +58,8 @@ export interface GameSnapshot {
   awaitingWildColor: boolean;
   /** Player who just played down to one card and has not called UNO. */
   unoPendingPlayerId: string | null;
+  /** Epoch ms when the UNO call opened; catch is blocked briefly after this. */
+  unoPendingAt: number | null;
   /** Last successful UNO call; cleared on the next play or draw. */
   unoSaid: UnoSaid | null;
   /** Server-side shuffle source. Not sent to clients. */
@@ -89,6 +91,8 @@ export interface PersonalizedState {
   awaitingWildColor: boolean;
   unoCall: UnoCall | null;
   unoSaid: UnoSaid | null;
+  /** Epoch ms when Catch becomes available; null when no call is open. */
+  catchAvailableAt: number | null;
   /** Epoch ms when the current turn is forced. Null while that player is disconnected. */
   turnDeadline?: number | null;
 }

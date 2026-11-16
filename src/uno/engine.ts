@@ -13,6 +13,8 @@ import {
 export const DEFAULT_CARDS_PER_PLAYER = 7;
 export const MIN_CARDS_PER_PLAYER = 1;
 export const MAX_CARDS_PER_PLAYER = 15;
+/** Grace window after a player goes to one card before Catch is allowed. */
+export const CATCH_GRACE_MS = 2000;
 
 export type ActionResult =
   | { ok: true; game: GameSnapshot }
@@ -110,6 +112,7 @@ export function createGame(
     status: '',
     awaitingWildColor: false,
     unoPendingPlayerId: null,
+    unoPendingAt: null,
     unoSaid: null,
     random,
   };
@@ -386,9 +389,19 @@ export function callUno(game: GameSnapshot, callerId: string): ActionResult {
 }
 
 /** Another player catches someone who forgot to call UNO. */
-export function catchUno(game: GameSnapshot, callerId: string): ActionResult {
+export function catchUno(
+  game: GameSnapshot,
+  callerId: string,
+  now: number = Date.now()
+): ActionResult {
   if (!game.unoPendingPlayerId) {
     return { ok: false, reason: 'No UNO call is open.' };
+  }
+  if (
+    game.unoPendingAt != null &&
+    now < game.unoPendingAt + CATCH_GRACE_MS
+  ) {
+    return { ok: false, reason: 'Wait a moment before catching.' };
   }
   if (callerId === game.unoPendingPlayerId) {
     return { ok: false, reason: 'You cannot catch yourself.' };
@@ -451,6 +464,10 @@ export function personalize(
     awaitingWildColor: game.awaitingWildColor,
     unoCall: unoCallView(game),
     unoSaid: game.unoSaid ? { ...game.unoSaid } : null,
+    catchAvailableAt:
+      game.unoPendingPlayerId && game.unoPendingAt != null
+        ? game.unoPendingAt + CATCH_GRACE_MS
+        : null,
   };
 }
 
@@ -608,17 +625,20 @@ function cloneGame(game: GameSnapshot): GameSnapshot {
     status: game.status,
     awaitingWildColor: game.awaitingWildColor,
     unoPendingPlayerId: game.unoPendingPlayerId,
+    unoPendingAt: game.unoPendingAt,
     unoSaid: game.unoSaid ? { ...game.unoSaid } : null,
     random: game.random,
   };
 }
 
-function openUnoCall(game: GameSnapshot, playerId: string): void {
+function openUnoCall(game: GameSnapshot, playerId: string, now: number = Date.now()): void {
   game.unoPendingPlayerId = playerId;
+  game.unoPendingAt = now;
 }
 
 function clearUnoCall(game: GameSnapshot): void {
   game.unoPendingPlayerId = null;
+  game.unoPendingAt = null;
 }
 
 function clearUnoSaid(game: GameSnapshot): void {
@@ -683,6 +703,7 @@ export function makeTestGame(partial: Partial<GameSnapshot> & { players: PlayerS
     status: '',
     awaitingWildColor: false,
     unoPendingPlayerId: null,
+    unoPendingAt: null,
     unoSaid: null as UnoSaid | null,
     random: Math.random,
     ...partial,

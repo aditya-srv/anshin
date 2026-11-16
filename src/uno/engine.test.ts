@@ -632,10 +632,12 @@ describe('uno call', () => {
   it('opens a call when a player plays down to one card', () => {
     const next = downToOne();
     assert.strictEqual(next.unoPendingPlayerId, 'a');
+    assert.ok(typeof next.unoPendingAt === 'number');
     assert.strictEqual(next.players[0].hand.length, 1);
     const view = personalize(next, 'b');
     assert.strictEqual(view.unoCall?.playerId, 'a');
     assert.strictEqual(view.unoSaid, null);
+    assert.ok(typeof view.catchAvailableAt === 'number');
   });
 
   it('lets the owner call UNO and announces it', () => {
@@ -659,14 +661,26 @@ describe('uno call', () => {
     }
   });
 
-  it('lets another player catch them anytime while open', () => {
+  it('blocks catch during the grace window after the play', () => {
+    const pending = downToOne();
+    const opened = pending.unoPendingAt ?? Date.now();
+    const next = catchUno(pending, 'b', opened + 500);
+    assert.strictEqual(next.ok, false);
+    if (!next.ok) {
+      assert.strictEqual(next.reason, 'Wait a moment before catching.');
+    }
+  });
+
+  it('lets another player catch them after the grace window', () => {
     const pending = downToOne();
     const turn = pending.currentPlayerIndex;
-    const next = catchUno(pending, 'b');
+    const opened = pending.unoPendingAt ?? Date.now();
+    const next = catchUno(pending, 'b', opened + 2000);
     assert.ok(next.ok);
     if (next.ok) {
       assert.strictEqual(next.game.players[0].hand.length, 3);
       assert.strictEqual(next.game.unoPendingPlayerId, null);
+      assert.strictEqual(next.game.unoPendingAt, null);
       assert.strictEqual(next.game.unoSaid, null);
       assert.strictEqual(next.game.currentPlayerIndex, turn);
       assert.match(next.game.status, /caught A without UNO/);
@@ -674,7 +688,9 @@ describe('uno call', () => {
   });
 
   it('rejects the owner catching themselves', () => {
-    const next = catchUno(downToOne(), 'a');
+    const pending = downToOne();
+    const opened = pending.unoPendingAt ?? Date.now();
+    const next = catchUno(pending, 'a', opened + 2000);
     assert.strictEqual(next.ok, false);
     if (!next.ok) {
       assert.strictEqual(next.reason, 'You cannot catch yourself.');

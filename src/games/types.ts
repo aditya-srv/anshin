@@ -31,6 +31,8 @@ export interface GameModule<TSession = unknown, TState = unknown> {
   onTimeout(session: TSession, playerId: string, random: () => number): TSession;
   personalize(session: TSession, playerId: string, context: PersonalizeContext): TState;
   dropPlayer(session: TSession, playerId: string): TSession;
+  /** Always advance past the current player (clear phase locks). Used when that seat is disconnected. */
+  forcePassTurn(session: TSession): TSession;
   winner(session: TSession): { id: string; name: string } | null;
   currentPlayerId(session: TSession): string;
   setStatus(session: TSession, status: string): TSession;

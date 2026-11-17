@@ -8,6 +8,7 @@ import {
   chooseOpeningColor,
   createGame,
   drawCard,
+  forcePassTurn,
   makeTestGame,
   personalize,
   playCard,
@@ -479,6 +480,22 @@ describe('playCard', () => {
     assert.strictEqual(next.players[1].hand.length, 5);
     assert.strictEqual(next.currentPlayerIndex, 2);
     assert.strictEqual(next.currentColor, 'blue');
+  });
+});
+
+describe('forcePassTurn', () => {
+  it('clears wild wait and advances the seat', () => {
+    const game = makeTestGame({
+      players: [
+        { id: 'a', name: 'A', hand: [{ id: 'h1', color: 'red', value: '7' }] },
+        { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
+      ],
+      currentPlayerIndex: 0,
+      awaitingWildColor: true,
+    });
+    const next = forcePassTurn(game);
+    assert.strictEqual(next.awaitingWildColor, false);
+    assert.strictEqual(next.currentPlayerIndex, 1);
   });
 });
 

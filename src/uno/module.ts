@@ -14,14 +14,11 @@ import {
   createGame,
   drawCard,
   dropPlayer,
+  forcePassTurn,
   personalize,
   playCard,
 } from './engine';
 import { GameSnapshot, PersonalizedState, UnoColor } from './types';
-
-function asGame(session: unknown): GameSnapshot {
-  return session as GameSnapshot;
-}
 
 function colorOf(value: unknown): UnoColor | undefined {
   return value === 'red' || value === 'yellow' || value === 'green' || value === 'blue'
@@ -64,17 +61,20 @@ function apply(session: GameSnapshot, playerId: string, action: GameAction): App
 }
 
 function onTimeout(session: GameSnapshot, playerId: string): GameSnapshot {
+  if (session.winnerId || session.players[session.currentPlayerIndex]?.id !== playerId) {
+    return session;
+  }
   const name = session.players.find((player) => player.id === playerId)?.name ?? 'Player';
   if (session.awaitingWildColor) {
     const chosen = chooseOpeningColor(session, playerId, 'red');
     if (!chosen.ok) {
-      return session;
+      return forcePassTurn(session);
     }
     return { ...chosen.game, status: `${name} timed out. Color set to red.` };
   }
   const drawn = drawCard(session, playerId);
   if (!drawn.ok) {
-    return session;
+    return forcePassTurn(session);
   }
   if (drawn.game.winnerId) {
     return drawn.game;
@@ -121,6 +121,9 @@ export const unoModule: GameModule<GameSnapshot, PersonalizedState> = {
   },
   dropPlayer(session: GameSnapshot, playerId: string): GameSnapshot {
     return dropPlayer(session, playerId);
+  },
+  forcePassTurn(session: GameSnapshot): GameSnapshot {
+    return forcePassTurn(session);
   },
   winner(session: GameSnapshot): { id: string; name: string } | null {
     if (!session.winnerId) {

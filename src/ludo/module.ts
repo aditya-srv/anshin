@@ -5,7 +5,15 @@ import {
   GamePlayer,
   PersonalizeContext,
 } from '../games/types';
-import { createGame, diceFromRandom, dropPlayer, moveToken, rollDice, tokenView } from './engine';
+import {
+  createGame,
+  diceFromRandom,
+  dropPlayer,
+  forcePassTurn,
+  moveToken,
+  rollDice,
+  tokenView,
+} from './engine';
 import { LudoPublicState, LudoSession } from './types';
 
 function settled(result: { ok: true; session: LudoSession } | { ok: false; reason: string }): ApplyResult<LudoSession> {
@@ -13,19 +21,22 @@ function settled(result: { ok: true; session: LudoSession } | { ok: false; reaso
 }
 
 function chooseTimeoutMove(session: LudoSession, playerId: string, random: () => number): LudoSession {
-  if (session.awaiting !== 'move' || session.winnerId) {
+  if (session.winnerId) {
     return session;
   }
   if (session.players[session.currentPlayerIndex]?.id !== playerId) {
     return session;
   }
+  if (session.awaiting !== 'move') {
+    return session;
+  }
   const ids = session.legalTokenIds;
   if (ids.length === 0) {
-    return session;
+    return forcePassTurn(session);
   }
   const tokenId = ids[Math.floor(random() * ids.length)] ?? ids[0];
   const moved = moveToken(session, playerId, tokenId);
-  return moved.ok ? moved.session : session;
+  return moved.ok ? moved.session : forcePassTurn(session);
 }
 
 export const ludoModule: GameModule<LudoSession, LudoPublicState> = {
@@ -55,7 +66,7 @@ export const ludoModule: GameModule<LudoSession, LudoPublicState> = {
     if (session.awaiting === 'roll') {
       const rolled = rollDice(session, playerId, diceFromRandom(random));
       if (!rolled.ok) {
-        return session;
+        return forcePassTurn(session);
       }
       return chooseTimeoutMove(rolled.session, playerId, random);
     }
@@ -90,6 +101,9 @@ export const ludoModule: GameModule<LudoSession, LudoPublicState> = {
   },
   dropPlayer(session: LudoSession, playerId: string): LudoSession {
     return dropPlayer(session, playerId);
+  },
+  forcePassTurn(session: LudoSession): LudoSession {
+    return forcePassTurn(session);
   },
   winner(session: LudoSession): { id: string; name: string } | null {
     if (!session.winnerId) {

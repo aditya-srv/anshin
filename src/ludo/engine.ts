@@ -77,8 +77,8 @@ export function rollDice(session: LudoSession, playerId: string, dice: number): 
   }
 
   if (legal.length === 1) {
-    const captured = applyTokenMove(next, legal[0], dice);
-    finishTurn(next, actor.name, dice, captured);
+    const result = applyTokenMove(next, legal[0], dice);
+    finishTurn(next, actor.name, dice, result.captured, result.finished);
     return { ok: true, session: next };
   }
 
@@ -99,8 +99,8 @@ export function moveToken(session: LudoSession, playerId: string, tokenId: strin
   const next = clone(session);
   const actor = current(next);
   const dice = next.dice ?? 0;
-  const captured = applyTokenMove(next, tokenId, dice);
-  finishTurn(next, actor.name, dice, captured);
+  const result = applyTokenMove(next, tokenId, dice);
+  finishTurn(next, actor.name, dice, result.captured, result.finished);
   return { ok: true, session: next };
 }
 
@@ -141,6 +141,11 @@ export function dropPlayer(session: LudoSession, playerId: string): LudoSession 
   next.players.splice(index, 1);
   next.tokens = next.tokens.filter((token) => token.playerId !== playerId);
   next.legalTokenIds = [];
+  if (next.awaiting === 'move') {
+    next.awaiting = 'roll';
+    next.dice = null;
+    next.consecutiveSixes = 0;
+  }
   if (next.players.length === 0) {
     next.currentPlayerIndex = 0;
     next.status = `${removed.name} left.`;
@@ -194,7 +199,8 @@ function finishTurn(
   session: LudoSession,
   actorName: string,
   dice: number,
-  captured: boolean
+  captured: boolean,
+  finished: boolean
 ): void {
   if (session.winnerId) {
     const winner = session.players.find((player) => player.id === session.winnerId);
@@ -207,16 +213,28 @@ function finishTurn(
     session.consecutiveSixes += 1;
     session.awaiting = 'roll';
     session.legalTokenIds = [];
-    session.status = captured
-      ? `${actorName} rolled a 6 and captured. Roll again.`
-      : `${actorName} rolled a 6. Roll again.`;
+    if (captured && finished) {
+      session.status = `${actorName} rolled a 6, captured, and got a piece home. Roll again.`;
+    } else if (captured) {
+      session.status = `${actorName} rolled a 6 and captured. Roll again.`;
+    } else if (finished) {
+      session.status = `${actorName} rolled a 6 and got a piece home. Roll again.`;
+    } else {
+      session.status = `${actorName} rolled a 6. Roll again.`;
+    }
     return;
   }
-  if (captured) {
+  if (captured || finished) {
     session.consecutiveSixes = 0;
     session.awaiting = 'roll';
     session.legalTokenIds = [];
-    session.status = `${actorName} captured a token. Roll again.`;
+    if (captured && finished) {
+      session.status = `${actorName} captured a token and got a piece home. Roll again.`;
+    } else if (captured) {
+      session.status = `${actorName} captured a token. Roll again.`;
+    } else {
+      session.status = `${actorName} got a piece home. Roll again.`;
+    }
     return;
   }
   session.consecutiveSixes = 0;
@@ -228,13 +246,34 @@ function finishTurn(
 
 function passTurn(session: LudoSession): void {
   session.currentPlayerIndex = (session.currentPlayerIndex + 1) % session.players.length;
+  session.dice = null;
 }
 
-function applyTokenMove(session: LudoSession, tokenId: string, dice: number): boolean {
+/** Clear phase locks and advance past the current player (disconnect / timeout fallback). */
+export function forcePassTurn(session: LudoSession): LudoSession {
+  if (session.winnerId || session.players.length === 0) {
+    return session;
+  }
+  const next = clone(session);
+  const skipped = current(next);
+  next.awaiting = 'roll';
+  next.legalTokenIds = [];
+  next.consecutiveSixes = 0;
+  passTurn(next);
+  next.status = `${skipped.name}'s turn was skipped. ${current(next).name}'s turn.`;
+  return next;
+}
+
+function applyTokenMove(
+  session: LudoSession,
+  tokenId: string,
+  dice: number
+): { captured: boolean; finished: boolean } {
   const token = session.tokens.find((item) => item.id === tokenId);
   if (!token) {
-    return false;
+    return { captured: false, finished: false };
   }
+  const prior = token.progress;
   let captured = false;
   if (token.progress < 0) {
     token.progress = 0;
@@ -242,10 +281,11 @@ function applyTokenMove(session: LudoSession, tokenId: string, dice: number): bo
     token.progress += dice;
     captured = capture(session, token);
   }
+  const finished = token.progress === DONE && prior !== DONE;
   if (session.tokens.filter((item) => item.playerId === token.playerId && item.progress === DONE).length === TOKENS_PER_PLAYER) {
     session.winnerId = token.playerId;
   }
-  return captured;
+  return { captured, finished };
 }
 
 function capture(session: LudoSession, moved: LudoToken): boolean {

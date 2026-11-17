@@ -389,6 +389,23 @@
     return points[points.length - 1];
   }
 
+  function cancelAnimation(id) {
+    var entry = animating[id];
+    if (!entry) {
+      return;
+    }
+    if (entry.el && entry.el.parentNode) {
+      entry.el.remove();
+    }
+    delete animating[id];
+  }
+
+  function cancelAnimations(ids) {
+    (ids || []).forEach(function (id) {
+      cancelAnimation(id);
+    });
+  }
+
   function animateToken(board, token, fromToken, onDone) {
     var startPt = boardPoint(board, fromToken);
     var views = pathViews(fromToken, token);
@@ -526,10 +543,16 @@
       return;
     }
     pendingGame = game;
+    var legalIds = game.legalTokenIds || [];
     var legal = {};
-    (game.legalTokenIds || []).forEach(function (id) {
+    legalIds.forEach(function (id) {
       legal[id] = true;
     });
+
+    /* Move phase needs clickable tokens — cancel ghosts that would hide them. */
+    if (game.awaiting === 'move' && legalIds.length) {
+      cancelAnimations(legalIds);
+    }
 
     var nextById = {};
     (game.tokens || []).forEach(function (token) {
@@ -542,6 +565,21 @@
       var prev = prevById[id];
       if (prev && !samePlace(prev, next) && !animating[id]) {
         movers.push({ from: prev, to: next });
+      }
+    });
+
+    /* Animating ids skipped as movers: snap them to the latest server place. */
+    Object.keys(animating).forEach(function (id) {
+      var next = nextById[id];
+      var prev = prevById[id];
+      if (!next) {
+        cancelAnimation(id);
+        return;
+      }
+      if (prev && !samePlace(prev, next) && !movers.some(function (move) {
+        return move.to.id === id;
+      })) {
+        cancelAnimation(id);
       }
     });
 

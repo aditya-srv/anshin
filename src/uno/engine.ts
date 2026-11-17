@@ -325,6 +325,30 @@ export function dropPlayer(game: GameSnapshot, playerId: string): GameSnapshot {
   return next;
 }
 
+/** Clear phase locks and advance past the current player (disconnect / timeout fallback). */
+export function forcePassTurn(game: GameSnapshot): GameSnapshot {
+  if (game.winnerId || game.players.length === 0) {
+    return game;
+  }
+  const next = cloneGame(game);
+  const skipped = next.players[next.currentPlayerIndex];
+  if (next.awaitingWildColor) {
+    next.awaitingWildColor = false;
+  }
+  advanceTurn(next);
+  ensureActiveCurrentPlayer(next);
+  const active = next.players.filter((player) => player.hand.length > 0);
+  if (active.length <= 1) {
+    const winner = active[0] ?? next.players[0];
+    next.winnerId = winner.id;
+    next.status = `${winner.name} wins!`;
+    return next;
+  }
+  const turnName = next.players[next.currentPlayerIndex]?.name ?? 'Next';
+  next.status = `${skipped?.name ?? 'Player'}'s turn was skipped. ${turnName}'s turn.`;
+  return next;
+}
+
 export function drawCard(game: GameSnapshot, playerId: string): ActionResult {
   if (game.awaitingWildColor) {
     return { ok: false, reason: 'Choose a color first.' };

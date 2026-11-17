@@ -4,6 +4,7 @@ import { START_INDEX, TRACK_LENGTH, boardCells, isSafeTrack, trackIndexFor } fro
 import {
   createGame,
   dropPlayer,
+  forcePassTurn,
   moveToken,
   placeToken,
   rollDice,
@@ -166,7 +167,7 @@ describe('ludo rules', () => {
     assert.strictEqual(token(joined.session, 'p1:1').progress, 1);
   });
 
-  it('requires an exact roll to finish and does not grant another roll', () => {
+  it('requires an exact roll to finish and grants another roll when a piece goes home', () => {
     let session = createGame(PLAYERS, fixed([2]));
     session = placeToken(session, 'p1:0', 55);
     session = placeToken(session, 'p1:1', 56);
@@ -179,13 +180,38 @@ describe('ludo rules', () => {
     }
     assert.strictEqual(token(overshoot.session, 'p1:0').progress, 55);
     assert.strictEqual(overshoot.session.winnerId, null);
+    assert.strictEqual(overshoot.session.currentPlayerIndex, 1);
 
+    let bonus = createGame(PLAYERS, fixed([1]));
+    bonus = placeToken(bonus, 'p1:0', 55);
+    bonus = placeToken(bonus, 'p1:1', -1);
+    bonus = placeToken(bonus, 'p1:2', 56);
+    bonus = placeToken(bonus, 'p1:3', 56);
+    const finished = rollDice(bonus, 'p1', 1);
+    assert.strictEqual(finished.ok, true);
+    if (!finished.ok) {
+      return;
+    }
+    assert.strictEqual(token(finished.session, 'p1:0').progress, 56);
+    assert.strictEqual(finished.session.winnerId, null);
+    assert.strictEqual(finished.session.currentPlayerIndex, 0);
+    assert.strictEqual(finished.session.awaiting, 'roll');
+    assert.match(finished.session.status, /got a piece home\. Roll again/);
+  });
+
+  it('wins when the last piece finishes without granting another roll', () => {
+    let session = createGame(PLAYERS, fixed([1]));
+    session = placeToken(session, 'p1:0', 55);
+    session = placeToken(session, 'p1:1', 56);
+    session = placeToken(session, 'p1:2', 56);
+    session = placeToken(session, 'p1:3', 56);
     const finished = rollDice(session, 'p1', 1);
     assert.strictEqual(finished.ok, true);
     if (!finished.ok) {
       return;
     }
     assert.strictEqual(finished.session.winnerId, 'p1');
+    assert.match(finished.session.status, /wins!/);
   });
 
   it('forfeits the third 6 and keeps the earlier moves', () => {
@@ -265,6 +291,81 @@ describe('ludo rules', () => {
     }) as { legalTokenIds: string[] };
     assert.strictEqual(yours.legalTokenIds.length, 4);
     assert.deepStrictEqual(theirs.legalTokenIds, []);
+  });
+
+  it('keeps a clear-path out piece in legalTokenIds when choosing among tokens', () => {
+    let session = createGame(PLAYERS, fixed([6]));
+    session = placeToken(session, 'p1:0', 10);
+    const rolled = rollDice(session, 'p1', 6);
+    assert.strictEqual(rolled.ok, true);
+    if (!rolled.ok) {
+      return;
+    }
+    assert.strictEqual(rolled.session.awaiting, 'move');
+    assert.ok(rolled.session.legalTokenIds.includes('p1:0'));
+  });
+
+  it('clears dice after no legal move so the next seat is not stuck on the old roll', () => {
+    const session = createGame(PLAYERS, fixed([1]));
+    const rolled = rollDice(session, 'p1', 1);
+    assert.strictEqual(rolled.ok, true);
+    if (!rolled.ok) {
+      return;
+    }
+    assert.strictEqual(rolled.session.players[rolled.session.currentPlayerIndex].id, 'p2');
+    assert.strictEqual(rolled.session.dice, null);
+    assert.strictEqual(rolled.session.awaiting, 'roll');
+  });
+
+  it('lets the current player roll again after another seat leaves mid-move', () => {
+    const three = [
+      { id: 'p1', name: 'Ada' },
+      { id: 'p2', name: 'Bea' },
+      { id: 'p3', name: 'Cy' },
+    ];
+    const session = createGame(three, fixed([6]));
+    const rolled = rollDice(session, 'p1', 6);
+    assert.strictEqual(rolled.ok, true);
+    if (!rolled.ok) {
+      return;
+    }
+    assert.strictEqual(rolled.session.awaiting, 'move');
+    const afterLeave = dropPlayer(rolled.session, 'p2');
+    assert.strictEqual(afterLeave.awaiting, 'roll');
+    assert.strictEqual(afterLeave.dice, null);
+    assert.strictEqual(afterLeave.players[afterLeave.currentPlayerIndex].id, 'p1');
+    const again = rollDice(afterLeave, 'p1', 3);
+    assert.strictEqual(again.ok, true);
+  });
+
+  it('forcePassTurn clears move phase and advances the seat', () => {
+    const session = createGame(PLAYERS, fixed([6]));
+    const rolled = rollDice(session, 'p1', 6);
+    assert.strictEqual(rolled.ok, true);
+    if (!rolled.ok) {
+      return;
+    }
+    assert.strictEqual(rolled.session.awaiting, 'move');
+    const skipped = forcePassTurn(rolled.session);
+    assert.strictEqual(skipped.awaiting, 'roll');
+    assert.strictEqual(skipped.dice, null);
+    assert.deepStrictEqual(skipped.legalTokenIds, []);
+    assert.strictEqual(skipped.players[skipped.currentPlayerIndex].id, 'p2');
+  });
+
+  it('timeout with an empty move list force-passes the turn', () => {
+    let session = createGame(PLAYERS, fixed([1]));
+    session = placeToken(session, 'p1:0', 0);
+    session = {
+      ...session,
+      awaiting: 'move',
+      dice: 2,
+      legalTokenIds: [],
+    };
+    const next = ludoModule.onTimeout(session, 'p1', fixed([1])) as LudoSession;
+    assert.strictEqual(next.players[next.currentPlayerIndex].id, 'p2');
+    assert.strictEqual(next.awaiting, 'roll');
+    assert.strictEqual(token(next, 'p1:0').progress, 0);
   });
 
   it('follows join order around the colors', () => {

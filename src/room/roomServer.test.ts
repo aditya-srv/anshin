@@ -678,8 +678,102 @@ describe('RoomServer', () => {
       const after = await boxes[0].until('state');
       assert.strictEqual(after.type, 'state');
       if (after.type === 'state') {
-        const state = after.state as { dice: number | null };
-        assert.ok(state.dice);
+        const state = after.state as { dice: number | null; awaiting: string };
+        // Yard-only: a 6 opens move with dice kept; 1–5 passes and clears dice.
+        assert.ok(
+          (state.awaiting === 'move' && state.dice === 6) ||
+            (state.awaiting === 'roll' && state.dice === null)
+        );
+      }
+    } finally {
+      for (const ws of sockets) {
+        ws.close();
+      }
+      await server.dispose();
+    }
+  });
+
+  it('skips a disconnected current seat and arms the next connected turn', async () => {
+    const server = await started({ persistent: true, reconnectMs: 500, turnMs: 5_000 });
+    const sockets = await Promise.all([
+      connect(server.getJoinUrl()),
+      connect(server.getJoinUrl()),
+      connect(server.getJoinUrl()),
+    ]);
+    try {
+      const boxes = sockets.map((ws) => new Inbox(ws));
+      send(sockets[0], { type: 'join', name: 'Ada' });
+      const lobby0 = await boxes[0].until('lobby');
+      assert.strictEqual(lobby0.type, 'lobby');
+      const hostId = lobby0.type === 'lobby' ? lobby0.yourPlayerId : '';
+      send(sockets[1], { type: 'join', name: 'Bea' });
+      await boxes[0].until('lobby');
+      send(sockets[2], { type: 'join', name: 'Cy' });
+      await boxes[0].until('lobby');
+      send(sockets[0], { type: 'setGame', game: 'ludo' });
+      await boxes[0].until('lobby');
+      send(sockets[0], { type: 'start' });
+      const startedHand = await boxes[1].until('state');
+      assert.strictEqual(startedHand.type, 'state');
+      sockets[0].close();
+      const after = await boxes[1].until('state');
+      assert.strictEqual(after.type, 'state');
+      if (after.type === 'state') {
+        const state = after.state as {
+          currentPlayerId: string;
+          turnDeadline: number | null;
+          yourPlayerId: string;
+        };
+        assert.notStrictEqual(state.currentPlayerId, hostId);
+        assert.ok(typeof state.turnDeadline === 'number');
+        assert.ok((state.turnDeadline ?? 0) > Date.now());
+      }
+    } finally {
+      for (const ws of sockets) {
+        ws.close();
+      }
+      await server.dispose();
+    }
+  });
+
+  it('keeps the hand playable after the current player leaves mid-game', async () => {
+    const server = await started({ persistent: true, turnMs: 5_000 });
+    const sockets = await Promise.all([
+      connect(server.getJoinUrl()),
+      connect(server.getJoinUrl()),
+      connect(server.getJoinUrl()),
+    ]);
+    try {
+      const boxes = sockets.map((ws) => new Inbox(ws));
+      send(sockets[0], { type: 'join', name: 'Ada' });
+      await boxes[0].until('lobby');
+      send(sockets[1], { type: 'join', name: 'Bea' });
+      await boxes[0].until('lobby');
+      send(sockets[2], { type: 'join', name: 'Cy' });
+      await boxes[0].until('lobby');
+      send(sockets[0], { type: 'setGame', game: 'ludo' });
+      await boxes[0].until('lobby');
+      send(sockets[0], { type: 'start' });
+      await boxes[1].until('state');
+      send(sockets[0], { type: 'leave' });
+      const after = await boxes[1].until('state');
+      assert.strictEqual(after.type, 'state');
+      if (after.type === 'state') {
+        const state = after.state as {
+          awaiting: string;
+          currentPlayerId: string;
+          yourPlayerId: string;
+          turnDeadline: number | null;
+          players: { id: string }[];
+        };
+        assert.strictEqual(state.players.length, 2);
+        assert.strictEqual(state.awaiting, 'roll');
+        assert.ok(typeof state.turnDeadline === 'number');
+        if (state.currentPlayerId === state.yourPlayerId) {
+          send(sockets[1], { type: 'action', action: { type: 'roll' } });
+          const rolled = await boxes[1].until('state');
+          assert.strictEqual(rolled.type, 'state');
+        }
       }
     } finally {
       for (const ws of sockets) {

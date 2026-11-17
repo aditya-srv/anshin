@@ -774,21 +774,35 @@ export class RoomServer {
     if (this.active.winner(this.session)) {
       return;
     }
-    const playerId = this.active.currentPlayerId(this.session);
-    const seat = playerId ? this.seats.get(playerId) : undefined;
-    if (!seat?.connected) {
-      return;
-    }
-    this.turnDeadline = Date.now() + this.turnMs;
-    const token = this.turnToken;
-    const timer = setTimeout(() => {
-      if (token !== this.turnToken) {
+
+    const maxSkips = this.active.playerIds(this.session).length;
+    for (let i = 0; i < maxSkips; i++) {
+      if (!this.active || this.session == null || this.phase !== 'playing') {
         return;
       }
-      this.onTurnTimeout(playerId);
-    }, this.turnMs);
-    timer.unref?.();
-    this.turnTimer = timer;
+      if (this.active.winner(this.session)) {
+        return;
+      }
+      const playerId = this.active.currentPlayerId(this.session);
+      const seat = playerId ? this.seats.get(playerId) : undefined;
+      if (seat?.connected) {
+        this.turnDeadline = Date.now() + this.turnMs;
+        const token = this.turnToken;
+        const timer = setTimeout(() => {
+          if (token !== this.turnToken) {
+            return;
+          }
+          this.onTurnTimeout(playerId);
+        }, this.turnMs);
+        timer.unref?.();
+        this.turnTimer = timer;
+        return;
+      }
+      this.session = this.active.forcePassTurn(this.session);
+      if (this.finishIfWon()) {
+        return;
+      }
+    }
   }
 
   private onTurnTimeout(playerId: string): void {
@@ -796,10 +810,12 @@ export class RoomServer {
       return;
     }
     if (this.active.winner(this.session) || this.active.currentPlayerId(this.session) !== playerId) {
+      this.armTurnClock();
       return;
     }
     const seat = this.seats.get(playerId);
     if (!seat?.connected) {
+      this.armTurnClock();
       return;
     }
     this.session = this.active.onTimeout(this.session, playerId, Math.random);
@@ -925,6 +941,9 @@ export class RoomServer {
       return;
     }
     this.armTurnClock();
+    if (this.phase !== 'playing' || !this.active || this.session == null) {
+      return;
+    }
     const ids = new Set(this.active.playerIds(this.session));
     for (const seat of this.seats.values()) {
       if (!ids.has(seat.id)) {

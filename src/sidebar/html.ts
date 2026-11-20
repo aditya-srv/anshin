@@ -2,7 +2,12 @@ import * as vscode from 'vscode';
 import { listGames } from '../games/registry';
 import { boardPayload } from '../ludo/board';
 
-/** Bust webview script/style caches when the extension version changes. */
+/**
+ * Bust webview script/style caches when media/protocol changes.
+ * Bump MEDIA_REV when shipping fixes under the same package version (e.g. 0.0.12).
+ */
+const MEDIA_REV = '12c';
+
 function mediaUri(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
@@ -10,7 +15,7 @@ function mediaUri(
   version: string
 ): vscode.Uri {
   return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', file)).with({
-    query: `v=${encodeURIComponent(version)}`,
+    query: `v=${encodeURIComponent(version)}-${MEDIA_REV}`,
   });
 }
 

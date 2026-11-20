@@ -112,7 +112,10 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
         break;
       case 'setGame':
         if (typeof message.game === 'string' && message.game) {
+          // Optimistic — remote lobby echoes can lag; keep the host pick from snapping back to Uno.
+          this.state = { ...this.state, selectedGame: message.game };
           this.session.setGame(message.game);
+          this.postUi();
         }
         break;
       case 'startGame': {
@@ -122,6 +125,10 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
             : 7;
         const game =
           typeof message.game === 'string' && message.game.trim() ? message.game.trim() : undefined;
+        if (game) {
+          this.state = { ...this.state, selectedGame: game };
+          this.session.setGame(game);
+        }
         this.session.start({
           ...(game ? { game } : {}),
           guaranteeSpecial: message.guaranteeSpecial !== false,

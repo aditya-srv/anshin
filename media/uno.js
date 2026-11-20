@@ -63,6 +63,8 @@
   var localStatus = null;
   var handFingerprint = '';
   var catchEnableTimer = null;
+  /** Host lobby pick while setGame is in flight — stops stale lobby renders from snapping back to Uno. */
+  var pendingGame = null;
 
   function setHostMode(mode) {
     hostMode = mode === 'remote' ? 'remote' : 'local';
@@ -120,8 +122,9 @@
 
   if (gameSelect) {
     gameSelect.addEventListener('change', function () {
-      showGameSettings(gameSelect.value);
-      vscode.postMessage({ type: 'setGame', game: gameSelect.value });
+      pendingGame = gameSelect.value;
+      showGameSettings(pendingGame);
+      vscode.postMessage({ type: 'setGame', game: pendingGame });
     });
   }
 
@@ -134,7 +137,9 @@
       }
       cardsPerPlayerInput.value = String(cards);
     }
-    var game = gameSelect ? gameSelect.value : 'uno';
+    var game = pendingGame || (gameSelect && gameSelect.value) || 'uno';
+    pendingGame = game;
+    vscode.postMessage({ type: 'setGame', game: game });
     vscode.postMessage({
       type: 'startGame',
       game: game,
@@ -339,6 +344,7 @@
     }
 
     if (state.screen === 'menu') {
+      pendingGame = null;
       appTitleEl.textContent = ultra ? 'Anshin' : 'Anshin · UNO';
       menuStatus.textContent = state.status || '';
       if (
@@ -363,6 +369,12 @@
       lobbyStatus.textContent = state.status || '';
       renderUnoSaid(null, ultra);
       var selected = state.selectedGame || 'uno';
+      if (pendingGame && state.selectedGame === pendingGame) {
+        pendingGame = null;
+      }
+      if (pendingGame) {
+        selected = pendingGame;
+      }
       if (gameSelect && document.activeElement !== gameSelect) {
         gameSelect.value = selected;
       }

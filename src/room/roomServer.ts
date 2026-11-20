@@ -521,7 +521,10 @@ export class RoomServer {
       return;
     }
     if (!getGame(gameId)) {
-      this.send(ws, { type: 'error', reason: 'Unknown game.' });
+      this.send(ws, {
+        type: 'error',
+        reason: `Unknown game "${gameId}". Restart the remote server on this Anshin build.`,
+      });
       return;
     }
     this.selectedGameId = gameId;
@@ -548,14 +551,20 @@ export class RoomServer {
       typeof options.game === 'string' ? options.game.trim() : '';
     if (requested) {
       if (!getGame(requested)) {
-        this.send(ws, { type: 'error', reason: 'Unknown game.' });
+        this.send(ws, {
+          type: 'error',
+          reason: `Unknown game "${requested}". Restart the remote server on this Anshin build.`,
+        });
         return;
       }
       this.selectedGameId = requested;
     }
     const module = getGame(this.selectedGameId);
     if (!module) {
-      this.send(ws, { type: 'error', reason: 'Unknown game.' });
+      this.send(ws, {
+        type: 'error',
+        reason: `Unknown game "${this.selectedGameId}". Restart the remote server on this Anshin build.`,
+      });
       return;
     }
     const seated = [...this.seats.values()];

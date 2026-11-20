@@ -1,10 +1,11 @@
+import { bluffModule } from '../bluff/module';
 import { ludoModule } from '../ludo/module';
 import { unoModule } from '../uno/module';
 import { GameModule } from './types';
 
 export const DEFAULT_GAME_ID = 'uno';
 
-const MODULES: readonly GameModule[] = [unoModule, ludoModule];
+const MODULES: readonly GameModule[] = [unoModule, ludoModule, bluffModule];
 
 export function listGames(): GameModule[] {
   return [...MODULES];

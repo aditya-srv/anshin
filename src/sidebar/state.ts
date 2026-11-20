@@ -1,8 +1,11 @@
+import { BluffPublicState } from '../bluff/types';
 import { DEFAULT_GAME_ID } from '../games/registry';
 import { LudoPublicState } from '../ludo/types';
 import { ServerMessage } from '../room/protocol';
 import { PersonalizedState } from '../uno/types';
 import { GuiMode, UiState, WebviewUiState } from './types';
+
+type GameView = PersonalizedState | LudoPublicState | BluffPublicState;
 
 const MENU_STATUS = 'Host locally, or toggle Remote and paste a server Join URL.';
 
@@ -44,7 +47,11 @@ export function lobbyStatus(youAreHost: boolean, joinUrl: string, joinUrls: stri
   return `Lobby · share ${joinUrl}`;
 }
 
-export function toWebviewState(state: UiState, defaultServerUrl: string): WebviewUiState {
+export function toWebviewState(
+  state: UiState,
+  defaultServerUrl: string,
+  extensionVersion = 'dev'
+): WebviewUiState {
   return {
     screen: state.screen,
     guiMode: state.guiMode,
@@ -57,6 +64,7 @@ export function toWebviewState(state: UiState, defaultServerUrl: string): Webvie
     yourName: state.yourName,
     selectedGame: state.selectedGame,
     defaultServerUrl,
+    extensionVersion,
     gameId: state.gameId,
     game: state.game,
   };
@@ -97,7 +105,7 @@ export function applyServerMessage(
           ...state,
           screen: 'game',
           gameId: msg.game,
-          game: msg.state as PersonalizedState | LudoPublicState,
+          game: msg.state as GameView,
           status: statusOf(msg.state),
         },
         resumeToken: msg.resumeToken,
@@ -108,7 +116,7 @@ export function applyServerMessage(
           ...state,
           screen: 'game',
           gameId: msg.game,
-          game: msg.state as PersonalizedState | LudoPublicState,
+          game: msg.state as GameView,
           status: `${msg.winnerName} wins!`,
         },
         resumeToken: msg.resumeToken,

@@ -26,6 +26,7 @@
   const cardsPerPlayerInput = document.getElementById('cardsPerPlayerInput');
   const guaranteeSpecialInput = document.getElementById('guaranteeSpecialInput');
   const ludoScreen = document.getElementById('ludoScreen');
+  const bluffScreen = document.getElementById('bluffScreen');
   const leaveLobbyBtn = document.getElementById('leaveLobbyBtn');
   const lobbyStatus = document.getElementById('lobbyStatus');
   const discardEl = document.getElementById('discard');
@@ -107,6 +108,12 @@
 
   if (window.AnshinLudo) {
     window.AnshinLudo.bind(function (message) {
+      vscode.postMessage(message);
+    });
+  }
+
+  if (window.AnshinBluff) {
+    window.AnshinBluff.bind(function (message) {
       vscode.postMessage(message);
     });
   }
@@ -257,13 +264,36 @@
     return gameId || 'Uno';
   }
 
+  /** Detect by state shape first so a Bluff hand never renders in the Uno UI. */
+  function activeGameId(state) {
+    if (!state) {
+      return null;
+    }
+    var game = state.game;
+    if (
+      game &&
+      (typeof game.canChallenge === 'boolean' ||
+        (game.lastPlay !== undefined && game.discardCount !== undefined))
+    ) {
+      return 'bluff';
+    }
+    if (game && Array.isArray(game.tokens) && game.awaiting) {
+      return 'ludo';
+    }
+    return state.gameId || null;
+  }
+
   function showScreen(screen, gameId) {
     var ludo = screen === 'game' && gameId === 'ludo';
+    var bluff = screen === 'game' && gameId === 'bluff';
     menuScreen.classList.toggle('hidden', screen !== 'menu');
     lobbyScreen.classList.toggle('hidden', screen !== 'lobby');
-    gameScreen.classList.toggle('hidden', screen !== 'game' || ludo);
+    gameScreen.classList.toggle('hidden', screen !== 'game' || ludo || bluff);
     if (ludoScreen) {
       ludoScreen.classList.toggle('hidden', !ludo);
+    }
+    if (bluffScreen) {
+      bluffScreen.classList.toggle('hidden', !bluff);
     }
   }
 
@@ -272,8 +302,13 @@
     if (!rendered || rendered.screen !== 'game' || !rendered.game || !rendered.game.turnDeadline) {
       return;
     }
-    if (rendered.gameId === 'ludo' && window.AnshinLudo) {
+    var gid = activeGameId(rendered);
+    if (gid === 'ludo' && window.AnshinLudo) {
       window.AnshinLudo.render(rendered.game);
+      return;
+    }
+    if (gid === 'bluff' && window.AnshinBluff) {
+      window.AnshinBluff.render(rendered.game);
       return;
     }
     renderTurnLine(rendered.game, normalizeMode(rendered.guiMode) === 'ultra', rendered.yourName);
@@ -283,6 +318,7 @@
     rendered = state;
     const mode = normalizeMode(state.guiMode);
     const ultra = mode === 'ultra';
+    const gid = activeGameId(state);
 
     document.body.classList.remove('gui-ultra', 'gui-low', 'gui-high');
     document.body.classList.add('gui-' + mode);
@@ -291,10 +327,13 @@
     guiLowBtn.classList.toggle('active', mode === 'low');
     guiHighBtn.classList.toggle('active', mode === 'high');
 
-    showScreen(state.screen, state.gameId);
+    showScreen(state.screen, gid);
 
     if (unoDockBar) {
-      unoDockBar.classList.toggle('hidden', state.screen !== 'game' || state.gameId === 'ludo');
+      unoDockBar.classList.toggle(
+        'hidden',
+        state.screen !== 'game' || gid === 'ludo' || gid === 'bluff'
+      );
     }
 
     if (state.screen === 'menu') {
@@ -315,7 +354,8 @@
     }
 
     if (state.screen === 'lobby') {
-      appTitleEl.textContent = ultra ? 'Anshin · lobby' : 'Anshin · Lobby';
+      var ver = state.extensionVersion ? ' · v' + state.extensionVersion : '';
+      appTitleEl.textContent = ultra ? 'Anshin · lobby' + ver : 'Anshin · Lobby' + ver;
       joinUrlDisplay.textContent = state.joinUrl || '';
       renderJoinUrls(state.joinUrls, state.joinUrl);
       lobbyStatus.textContent = state.status || '';
@@ -339,10 +379,20 @@
       return;
     }
 
-    if (state.gameId === 'ludo') {
+    if (gid === 'ludo') {
       appTitleEl.textContent = 'Anshin · Ludo';
       if (window.AnshinLudo) {
         window.AnshinLudo.render(state.game);
+      }
+      return;
+    }
+
+    if (gid === 'bluff') {
+      appTitleEl.textContent = 'Anshin · Bluff';
+      if (window.AnshinBluff) {
+        window.AnshinBluff.render(state.game);
+      } else if (statusEl) {
+        statusEl.textContent = 'Bluff UI failed to load. Reload the Anshin view (or Ctrl+F5 the Extension Host).';
       }
       return;
     }

@@ -2,7 +2,7 @@
   "name": "anshin",
   "displayName": "Anshin",
   "description": "Anshin sidebar sessions panel",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "publisher": "aditya",
   "engines": {
     "vscode": "^1.85.0"
@@ -47,7 +47,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "server": "node out/server.js",
-    "test": "npm run compile && node --test out/room/*.test.js out/uno/*.test.js out/ludo/*.test.js",
+    "test": "npm run compile && node --test out/room/*.test.js out/uno/*.test.js out/ludo/*.test.js out/bluff/*.test.js",
     "build": "npm run compile && npx --yes @vscode/vsce package --allow-missing-repository",
     "update": "bash scripts/update.sh"
   },

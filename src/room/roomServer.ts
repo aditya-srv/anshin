@@ -768,13 +768,14 @@ export class RoomServer {
 
   private armTurnClock(): void {
     this.clearTurnClock();
-    if (!this.active || this.session == null || this.phase !== 'playing' || this.turnMs <= 0) {
+    if (!this.active || this.session == null || this.phase !== 'playing') {
       return;
     }
     if (this.active.winner(this.session)) {
       return;
     }
 
+    const timed = this.turnMs > 0 && this.active.turnClock !== false;
     const maxSkips = this.active.playerIds(this.session).length;
     for (let i = 0; i < maxSkips; i++) {
       if (!this.active || this.session == null || this.phase !== 'playing') {
@@ -786,6 +787,9 @@ export class RoomServer {
       const playerId = this.active.currentPlayerId(this.session);
       const seat = playerId ? this.seats.get(playerId) : undefined;
       if (seat?.connected) {
+        if (!timed) {
+          return;
+        }
         this.turnDeadline = Date.now() + this.turnMs;
         const token = this.turnToken;
         const timer = setTimeout(() => {

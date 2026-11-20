@@ -8,7 +8,9 @@
     "sourceMap": true,
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "incremental": true,
+    "tsBuildInfoFile": "out/.tsbuildinfo"
   },
   "exclude": ["node_modules", ".vscode-test"]
 }

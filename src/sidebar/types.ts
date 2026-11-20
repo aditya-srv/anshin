@@ -1,3 +1,4 @@
+import { BluffPublicState } from '../bluff/types';
 import { GameAction } from '../games/types';
 import { LudoPublicState } from '../ludo/types';
 import { LobbyPlayer } from '../room/protocol';
@@ -20,7 +21,7 @@ export interface UiState {
   yourName: string;
   selectedGame: string;
   gameId: string | null;
-  game: PersonalizedState | LudoPublicState | null;
+  game: PersonalizedState | LudoPublicState | BluffPublicState | null;
 }
 
 export type IncomingMessage =
@@ -46,6 +47,8 @@ export interface WebviewUiState {
   yourName: string;
   selectedGame: string;
   defaultServerUrl: string;
+  /** Extension package version — joiners compare this when Bluff UI is missing. */
+  extensionVersion: string;
   gameId: string | null;
-  game: PersonalizedState | LudoPublicState | null;
+  game: PersonalizedState | LudoPublicState | BluffPublicState | null;
 }

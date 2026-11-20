@@ -54,8 +54,21 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
       })
     );
 
-    webviewView.webview.html = buildSidebarHtml(webviewView.webview, this.extensionUri);
+    this.setWebviewHtml(webviewView);
     this.postUi();
+  }
+
+  private setWebviewHtml(webviewView: vscode.WebviewView): void {
+    let version = 'dev';
+    try {
+      // Compiled as out/anshinViewProvider.js → ../package.json is the extension root.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pkg = require('../package.json') as { version?: string };
+      version = String(pkg.version ?? 'dev');
+    } catch {
+      version = String(Date.now());
+    }
+    webviewView.webview.html = buildSidebarHtml(webviewView.webview, this.extensionUri, version);
   }
 
   public shutdown(): Promise<void> {
@@ -302,6 +315,16 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
     }
   }
 
+  private extensionVersion(): string {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pkg = require('../package.json') as { version?: string };
+      return String(pkg.version ?? 'dev');
+    } catch {
+      return 'dev';
+    }
+  }
+
   private postUi(): void {
     if (!this.view) {
       return;
@@ -310,7 +333,7 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
       vscode.workspace.getConfiguration('anshin').get<string>('serverUrl')?.trim() ?? '';
     this.view.webview.postMessage({
       type: 'ui',
-      state: toWebviewState(this.state, defaultServerUrl),
+      state: toWebviewState(this.state, defaultServerUrl, this.extensionVersion()),
     });
   }
 }

@@ -26,6 +26,8 @@ export interface GameModule<TSession = unknown, TState = unknown> {
   label: string;
   minPlayers: number;
   maxPlayers: number;
+  /** When false, the room does not arm a turn timer. Defaults to true. */
+  turnClock?: boolean;
   create(players: GamePlayer[], random: () => number, options: GameOptions): TSession;
   apply(session: TSession, playerId: string, action: GameAction): ApplyResult<TSession>;
   onTimeout(session: TSession, playerId: string, random: () => number): TSession;

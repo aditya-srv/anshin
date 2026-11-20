@@ -2,11 +2,29 @@ import * as vscode from 'vscode';
 import { listGames } from '../games/registry';
 import { boardPayload } from '../ludo/board';
 
-export function buildSidebarHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'uno.css'));
-  const ludoStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'ludo.css'));
-  const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'uno.js'));
-  const ludoScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'ludo.js'));
+/** Bust webview script/style caches when the extension version changes. */
+function mediaUri(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri,
+  file: string,
+  version: string
+): vscode.Uri {
+  return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', file)).with({
+    query: `v=${encodeURIComponent(version)}`,
+  });
+}
+
+export function buildSidebarHtml(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri,
+  version = '0'
+): string {
+  const styleUri = mediaUri(webview, extensionUri, 'uno.css', version);
+  const ludoStyleUri = mediaUri(webview, extensionUri, 'ludo.css', version);
+  const bluffStyleUri = mediaUri(webview, extensionUri, 'bluff.css', version);
+  const scriptUri = mediaUri(webview, extensionUri, 'uno.js', version);
+  const ludoScriptUri = mediaUri(webview, extensionUri, 'ludo.js', version);
+  const bluffScriptUri = mediaUri(webview, extensionUri, 'bluff.js', version);
   const nonce = getNonce();
   const boardJson = JSON.stringify(boardPayload()).replace(/</g, '\\u003c');
 
@@ -19,6 +37,7 @@ export function buildSidebarHtml(webview: vscode.Webview, extensionUri: vscode.U
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="${styleUri}" rel="stylesheet" />
   <link href="${ludoStyleUri}" rel="stylesheet" />
+  <link href="${bluffStyleUri}" rel="stylesheet" />
   <title>Anshin</title>
 </head>
 <body class="gui-low">
@@ -149,8 +168,43 @@ export function buildSidebarHtml(webview: vscode.Webview, extensionUri: vscode.U
     </div>
   </section>
 
+  <section id="bluffScreen" class="screen hidden">
+    <div class="bluff-scroll">
+      <div id="bluffOpponents" class="bluff-opponents"></div>
+      <section class="bluff-table">
+        <div id="bluffPile" class="bluff-pile"></div>
+        <p id="bluffClaim" class="bluff-claim"></p>
+        <p id="bluffTableStatus" class="status"></p>
+      </section>
+      <section class="bluff-hand-section">
+        <div class="seat-label"><span id="bluffYouLabel">You</span><span id="bluffYouCount" class="seat-count"></span></div>
+        <div id="bluffRanks" class="bluff-ranks" role="group" aria-label="Declare rank"></div>
+        <div id="bluffHand" class="bluff-hand row wrap"></div>
+        <p id="bluffSelected" class="bluff-selected"></p>
+      </section>
+      <section id="bluffControls" class="bluff-controls">
+        <div class="row-actions">
+          <button id="bluffPlay" type="button">Play cards</button>
+          <button id="bluffPass" type="button" class="secondary">Pass</button>
+          <button id="bluffChallenge" type="button" class="bluff-challenge">Call bluff!</button>
+          <button id="bluffLeave" type="button" class="secondary">Leave</button>
+        </div>
+      </section>
+      <p id="bluffStatus" class="status"></p>
+    </div>
+    <div id="bluffReveal" class="bluff-reveal hidden" role="dialog" aria-modal="true">
+      <div class="bluff-reveal-card">
+        <h2 id="bluffRevealTitle">Challenge</h2>
+        <p id="bluffRevealMsg" class="status"></p>
+        <div id="bluffRevealCards" class="bluff-reveal-cards row center"></div>
+        <button id="bluffRevealClose" type="button">Continue</button>
+      </div>
+    </div>
+  </section>
+
   <script nonce="${nonce}" id="ludo-board" type="application/json">${boardJson}</script>
   <script nonce="${nonce}" src="${ludoScriptUri}"></script>
+  <script nonce="${nonce}" src="${bluffScriptUri}"></script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
@@ -163,7 +217,12 @@ function hostOptionsHtml(): string {
   const settings = listGames()
     .map((game) => {
       const hidden = game.id === 'uno' ? '' : ' hidden';
-      const body = game.id === 'uno' ? unoSettingsHtml() : '';
+      let body = '';
+      if (game.id === 'uno') {
+        body = unoSettingsHtml();
+      } else if (game.id === 'bluff') {
+        body = bluffSettingsHtml();
+      }
       return `<div id="settings-${game.id}" class="game-settings${hidden}">${body}</div>`;
     })
     .join('');
@@ -188,6 +247,10 @@ function unoSettingsHtml(): string {
           1 special card each
         </span>
       </label>`;
+}
+
+function bluffSettingsHtml(): string {
+  return `<p class="game-blurb">Trust nobody. Challenge everyone. · 2–4 players</p>`;
 }
 
 function getNonce(): string {

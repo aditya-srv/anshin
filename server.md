@@ -1,6 +1,6 @@
 # Separate Node.js room server
 
-Optional remote host for Uno and Ludo rooms (e.g. AWS EC2 **t3.micro**). The sidebar **Host room** button has a Local / Remote toggle. Local still binds a room on your LAN. Remote only connects to a Server Join URL. After the room is up, the host picks the game. Restart this process on a build that includes Ludo before a remote Ludo game can start.
+Optional remote host for Uno, Ludo, and Bluff rooms (e.g. AWS EC2 **t3.micro**). The sidebar **Host room** button has a Local / Remote toggle. Local still binds a room on your LAN. Remote only connects to a Server Join URL. After the room is up, the host picks the game. Restart this process on a build that includes the game you want before a remote session of that game can start.
 
 ## Dual mode
 
@@ -47,7 +47,7 @@ Optional remote host for Uno and Ludo rooms (e.g. AWS EC2 **t3.micro**). The sid
 - `SIGINT` / `SIGTERM` → `dispose()`
 - Sockets are pinged. A socket that misses a pong is closed so a dead connection cannot hold the turn
 - A dropped seat is held for 20s. The same player can resume and keep their hand. Leave removes the seat immediately. If only one player is left, they win
-- The current player has 45s. In Uno, expiry chooses red if a color is required, otherwise draws one card. In Ludo, expiry rolls, and if several tokens can move it moves a random legal one
+- The current player has 45s. In Uno, expiry chooses red if a color is required, otherwise draws one card. In Ludo, expiry rolls, and if several tokens can move it moves a random legal one. In Bluff, expiry accepts a pending empty-hand win if one is waiting, otherwise skips the seat
 - Someone who joins during a hand waits, then sits down when that hand returns to the lobby
 - After a win, the same players stay connected, see the winner, then return to the lobby. A Local room uses these same reconnect, turn clock, and next-hand rules. On the VPS, if the host leaves the lobby but others remain, another seat is promoted. A Local host leaving the lobby closes the room
 - `package.json`: `"server": "node out/server.js"`
@@ -57,7 +57,7 @@ Optional remote host for Uno and Ludo rooms (e.g. AWS EC2 **t3.micro**). The sid
 1. **Host room** → **Local** starts a room on this machine (join URL includes a fresh `?t=`).
 2. **Host room** → **Remote** connects to the Server Join URL. The field must be a `ws://` or `wss://` URL that includes `?t=`. `anshin.serverUrl` pre-fills it.
 3. **Join room** → paste the same `ws://…?t=…` address. The first player in an empty lobby is the host.
-4. In the lobby the host chooses **Uno** or **Ludo**, then **Start game**. Uno needs 2–6 players and shows its card settings. Ludo needs 2–4 players and has no extra settings.
+4. In the lobby the host chooses **Uno**, **Ludo**, or **Bluff**, then **Start game**. Uno needs 2–6 players and shows its card settings. Ludo and Bluff need 2–4 players and have no extra settings.
 
 ## Deploy on AWS t3.micro
 

@@ -207,28 +207,22 @@ function finishTurn(
     session.status = `${winner?.name ?? actorName} wins!`;
     session.awaiting = 'roll';
     session.legalTokenIds = [];
+    session.dice = null;
     return;
   }
-  if (dice === 6) {
-    session.consecutiveSixes += 1;
-    session.awaiting = 'roll';
-    session.legalTokenIds = [];
-    if (captured && finished) {
+
+  // Extra roll: 6, capture, or a token reaching the centre (progress 56) — not merely the home lane.
+  if (dice === 6 || captured || finished) {
+    keepSeatForBonusRoll(session, dice === 6);
+    if (dice === 6 && captured && finished) {
       session.status = `${actorName} rolled a 6, captured, and got a piece home. Roll again.`;
-    } else if (captured) {
+    } else if (dice === 6 && captured) {
       session.status = `${actorName} rolled a 6 and captured. Roll again.`;
-    } else if (finished) {
+    } else if (dice === 6 && finished) {
       session.status = `${actorName} rolled a 6 and got a piece home. Roll again.`;
-    } else {
+    } else if (dice === 6) {
       session.status = `${actorName} rolled a 6. Roll again.`;
-    }
-    return;
-  }
-  if (captured || finished) {
-    session.consecutiveSixes = 0;
-    session.awaiting = 'roll';
-    session.legalTokenIds = [];
-    if (captured && finished) {
+    } else if (captured && finished) {
       session.status = `${actorName} captured a token and got a piece home. Roll again.`;
     } else if (captured) {
       session.status = `${actorName} captured a token. Roll again.`;
@@ -237,11 +231,20 @@ function finishTurn(
     }
     return;
   }
+
   session.consecutiveSixes = 0;
   session.awaiting = 'roll';
   session.legalTokenIds = [];
   passTurn(session);
   session.status = `${actorName} rolled ${dice}. ${current(session).name}'s turn.`;
+}
+
+/** Same seat rolls again; clear the spent die so the UI is a fresh roll prompt. */
+function keepSeatForBonusRoll(session: LudoSession, fromSix: boolean): void {
+  session.consecutiveSixes = fromSix ? session.consecutiveSixes + 1 : 0;
+  session.awaiting = 'roll';
+  session.legalTokenIds = [];
+  session.dice = null;
 }
 
 function passTurn(session: LudoSession): void {
@@ -313,57 +316,18 @@ function capture(session: LudoSession, moved: LudoToken): boolean {
 function legalTokenIds(session: LudoSession, dice: number): string[] {
   const player = current(session);
   return session.tokens
-    .filter((token) => token.playerId === player.id && canMove(session, token, dice))
+    .filter((token) => token.playerId === player.id && canMove(token, dice))
     .map((token) => token.id);
 }
 
-function canMove(session: LudoSession, token: LudoToken, dice: number): boolean {
+function canMove(token: LudoToken, dice: number): boolean {
   if (token.progress === DONE) {
     return false;
   }
   if (token.progress < 0) {
-    return dice === 6 && !opponentBlock(session, token.playerId, trackIndexFor(token.color, 0));
+    return dice === 6;
   }
-  const next = token.progress + dice;
-  if (next > DONE) {
-    return false;
-  }
-  const lastTrackStep = Math.min(LAST_TRACK, next);
-  for (let step = token.progress + 1; step <= lastTrackStep; step++) {
-    if (opponentBlock(session, token.playerId, trackIndexFor(token.color, step))) {
-      return false;
-    }
-  }
-  if (next <= LAST_TRACK) {
-    const landed = trackIndexFor(token.color, next);
-    if (!isSafeTrack(landed) && opponentTokens(session, token.playerId, landed).length >= 2) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function opponentBlock(session: LudoSession, playerId: string, trackIndex: number): boolean {
-  const counts = new Map<string, number>();
-  for (const token of opponentTokens(session, playerId, trackIndex)) {
-    counts.set(token.playerId, (counts.get(token.playerId) ?? 0) + 1);
-  }
-  for (const count of counts.values()) {
-    if (count >= 2) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function opponentTokens(session: LudoSession, playerId: string, trackIndex: number): LudoToken[] {
-  return session.tokens.filter(
-    (token) =>
-      token.playerId !== playerId &&
-      token.progress >= 0 &&
-      token.progress <= LAST_TRACK &&
-      trackIndexFor(token.color, token.progress) === trackIndex
-  );
+  return token.progress + dice <= DONE;
 }
 
 function current(session: LudoSession): LudoPlayer {

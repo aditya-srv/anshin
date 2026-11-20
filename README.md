@@ -33,16 +33,8 @@ npm run watch     # rebuild on change
 
 ### compile and build
 
-From this extension folder:
-
 ```bash
-npm install
-npm run compile
-npx vsce package --allow-missing-repository
-```
-
-## install in cursor
-
-```bash
-cursor --install-extension anshin-0.0.9.vsix
+npm run build          # compile + package anshin-<version>.vsix
+npm run update         # checkout latest version branch + install its .vsix
+npm run update -- v0.0.10
 ```

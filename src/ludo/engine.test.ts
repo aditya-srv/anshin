@@ -110,6 +110,7 @@ describe('ludo rules', () => {
     assert.strictEqual(token(capture.session, 'p2:0').progress, -1);
     assert.strictEqual(capture.session.currentPlayerIndex, 0);
     assert.strictEqual(capture.session.awaiting, 'roll');
+    assert.strictEqual(capture.session.dice, null);
     assert.match(capture.session.status, /captured a token\. Roll again/);
 
     let passed = createGame(PLAYERS, fixed([2]));
@@ -135,18 +136,19 @@ describe('ludo rules', () => {
     assert.strictEqual(token(shared.session, 'p1:0').progress, 8);
   });
 
-  it('blocks passage with two of the same color and still allows stacking your own', () => {
-    let blocked = createGame(PLAYERS, fixed([2]));
-    blocked = placeToken(blocked, 'p1:0', 0);
-    blocked = placeToken(blocked, 'p2:0', progressOn('green', 1));
-    blocked = placeToken(blocked, 'p2:1', progressOn('green', 1));
-    const stopped = rollDice(blocked, 'p1', 2);
-    assert.strictEqual(stopped.ok, true);
-    if (!stopped.ok) {
+  it('allows jumping over two of the same color and stacking your own', () => {
+    let over = createGame(PLAYERS, fixed([2]));
+    over = placeToken(over, 'p1:0', 0);
+    over = placeToken(over, 'p2:0', progressOn('green', 1));
+    over = placeToken(over, 'p2:1', progressOn('green', 1));
+    const jumped = rollDice(over, 'p1', 2);
+    assert.strictEqual(jumped.ok, true);
+    if (!jumped.ok) {
       return;
     }
-    assert.strictEqual(token(stopped.session, 'p1:0').progress, 0);
-    assert.strictEqual(stopped.session.currentPlayerIndex, 1);
+    assert.strictEqual(token(jumped.session, 'p1:0').progress, 2);
+    assert.strictEqual(token(jumped.session, 'p2:0').progress, progressOn('green', 1));
+    assert.strictEqual(token(jumped.session, 'p2:1').progress, progressOn('green', 1));
 
     let stacked = createGame(PLAYERS, fixed([1]));
     stacked = placeToken(stacked, 'p1:0', 0);
@@ -196,6 +198,7 @@ describe('ludo rules', () => {
     assert.strictEqual(finished.session.winnerId, null);
     assert.strictEqual(finished.session.currentPlayerIndex, 0);
     assert.strictEqual(finished.session.awaiting, 'roll');
+    assert.strictEqual(finished.session.dice, null);
     assert.match(finished.session.status, /got a piece home\. Roll again/);
   });
 

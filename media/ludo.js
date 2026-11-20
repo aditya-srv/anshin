@@ -512,7 +512,10 @@
     var roll = document.getElementById('ludoRoll');
     var mine = game.currentPlayerId === game.yourPlayerId && !game.winnerId;
     if (roll) {
-      roll.disabled = !mine || game.awaiting !== 'roll' || Object.keys(animating).length > 0;
+      /* Server phase alone gates Roll — token flight is cosmetic. Locking on
+         animating left bonus rolls (home / capture / 6) unusable if the
+         animation was cancelled without onDone. */
+      roll.disabled = !mine || game.awaiting !== 'roll';
     }
     if (dice) {
       dice.textContent = game.dice ? 'Dice ' + game.dice : 'Dice';

@@ -542,6 +542,17 @@ export class RoomServer {
       this.send(ws, { type: 'error', reason: 'Game already started.' });
       return;
     }
+    // Start may carry the lobby selection so a late setGame (common on remote RTT)
+    // cannot leave selectedGameId stuck on the default Uno.
+    const requested =
+      typeof options.game === 'string' ? options.game.trim() : '';
+    if (requested) {
+      if (!getGame(requested)) {
+        this.send(ws, { type: 'error', reason: 'Unknown game.' });
+        return;
+      }
+      this.selectedGameId = requested;
+    }
     const module = getGame(this.selectedGameId);
     if (!module) {
       this.send(ws, { type: 'error', reason: 'Unknown game.' });

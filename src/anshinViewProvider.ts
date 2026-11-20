@@ -120,7 +120,10 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
           typeof message.cardsPerPlayer === 'number' && Number.isInteger(message.cardsPerPlayer)
             ? message.cardsPerPlayer
             : 7;
+        const game =
+          typeof message.game === 'string' && message.game.trim() ? message.game.trim() : undefined;
         this.session.start({
+          ...(game ? { game } : {}),
           guaranteeSpecial: message.guaranteeSpecial !== false,
           cardsPerPlayer: cards,
         });

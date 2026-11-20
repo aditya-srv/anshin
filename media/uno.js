@@ -134,8 +134,10 @@
       }
       cardsPerPlayerInput.value = String(cards);
     }
+    var game = gameSelect ? gameSelect.value : 'uno';
     vscode.postMessage({
       type: 'startGame',
+      game: game,
       guaranteeSpecial: !!(guaranteeSpecialInput && guaranteeSpecialInput.checked),
       cardsPerPlayer: cards,
     });

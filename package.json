@@ -47,7 +47,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "server": "node out/server.js",
-    "test": "npm run compile && node --test out/room/*.test.js out/uno/*.test.js out/ludo/*.test.js"
+    "test": "npm run compile && node --test out/room/*.test.js out/uno/*.test.js out/ludo/*.test.js",
+    "update": "bash scripts/update.sh"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

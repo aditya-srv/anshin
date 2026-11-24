@@ -729,6 +729,35 @@ describe('RoomServer', () => {
     }
   });
 
+  it('starts Bluff with two decks when deckCount is 2', async () => {
+    const server = await started({ persistent: true });
+    const sockets = await Promise.all([
+      connect(server.getJoinUrl()),
+      connect(server.getJoinUrl()),
+    ]);
+    try {
+      const boxes = sockets.map((ws) => new Inbox(ws));
+      send(sockets[0], { type: 'join', name: 'Ada' });
+      await boxes[0].until('lobby');
+      send(sockets[1], { type: 'join', name: 'Bea' });
+      await boxes[0].until('lobby');
+
+      send(sockets[0], { type: 'start', options: { game: 'bluff', deckCount: 2 } });
+      const startedHand = await boxes[0].until('state');
+      assert.strictEqual(startedHand.type, 'state');
+      if (startedHand.type === 'state') {
+        assert.strictEqual(startedHand.game, 'bluff');
+        const state = startedHand.state as { hand: unknown[]; opponents: { cardCount: number }[] };
+        assert.strictEqual(state.hand.length + state.opponents[0].cardCount, 104);
+      }
+    } finally {
+      for (const ws of sockets) {
+        ws.close();
+      }
+      await server.dispose();
+    }
+  });
+
   it('skips a disconnected current seat and arms the next connected turn', async () => {
     const server = await started({ persistent: true, reconnectMs: 500, turnMs: 5_000 });
     const sockets = await Promise.all([

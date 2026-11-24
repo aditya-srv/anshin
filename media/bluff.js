@@ -5,6 +5,7 @@
   var selected = {};
   var declaredRank = 'Ace';
   var lastChallengeKey = '';
+  var pickingChallenge = false;
   var ranks = [
     'Ace',
     '2',
@@ -42,10 +43,22 @@
       btn.dataset.rank = value;
       btn.title = value;
       btn.textContent = shortRankLabel(value);
-      btn.addEventListener('click', function () {
-        declaredRank = value;
-        paintRankButtons();
+      btn.addEventListener('click', function (event) {
         var game = window.__anshinBluffGame;
+        var lockedRank = resolveLockedRank(game);
+        // Rank is fixed for the whole pile until a challenge clears it.
+        if (lockedRank || btn.disabled) {
+          if (event && event.preventDefault) {
+            event.preventDefault();
+          }
+          return;
+        }
+        declaredRank = value;
+        var myTurn =
+          !!game &&
+          game.currentPlayerId === game.yourPlayerId &&
+          !game.winnerId;
+        paintRankButtons(myTurn, null);
         if (game) {
           render(game);
         }
@@ -55,21 +68,126 @@
     return root;
   }
 
-  function paintRankButtons(enabled) {
+  function resolveLockedRank(game) {
+    if (!game) {
+      return null;
+    }
+    // Cards still in the upper pile → rank stays frozen for every player
+    // until a challenge takes those cards.
+    if (!(game.discardCount > 0)) {
+      return null;
+    }
+    if (typeof game.claimedRank === 'string' && game.claimedRank) {
+      return game.claimedRank;
+    }
+    if (game.lastPlay && typeof game.lastPlay.declaredRank === 'string') {
+      return game.lastPlay.declaredRank;
+    }
+    return null;
+  }
+
+  function paintRankButtons(enabled, lockedRank) {
     var root = ensureRankButtons();
+    var lockEl = document.getElementById('bluffRankLock');
     if (!root) {
       return;
     }
+    if (lockedRank) {
+      declaredRank = lockedRank;
+      // Hide the chooser entirely so nobody (including the starter) can pick
+      // another rank while the pile still has cards.
+      root.classList.add('hidden');
+      root.classList.add('bluff-ranks--locked');
+      root.setAttribute('aria-hidden', 'true');
+      var lockedButtons = root.querySelectorAll('.bluff-rank-btn');
+      for (var i = 0; i < lockedButtons.length; i++) {
+        lockedButtons[i].disabled = true;
+        lockedButtons[i].tabIndex = -1;
+      }
+      if (lockEl) {
+        lockEl.classList.remove('hidden');
+        lockEl.textContent =
+          'Rank locked: ' +
+          lockedRank +
+          ' — call bluff to take the pile before changing rank';
+      }
+      return;
+    }
+
+    root.classList.remove('hidden');
+    root.classList.remove('bluff-ranks--locked');
+    root.removeAttribute('aria-hidden');
+    if (lockEl) {
+      lockEl.classList.add('hidden');
+      lockEl.textContent = '';
+    }
+
     var buttons = root.querySelectorAll('.bluff-rank-btn');
-    for (var i = 0; i < buttons.length; i++) {
-      var btn = buttons[i];
-      var active = btn.dataset.rank === declaredRank;
+    for (var j = 0; j < buttons.length; j++) {
+      var btn = buttons[j];
+      var rank = btn.dataset.rank;
+      var active = rank === declaredRank;
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-      if (enabled !== undefined) {
-        btn.disabled = !enabled;
+      btn.disabled = !enabled;
+      btn.tabIndex = enabled ? 0 : -1;
+      if (!enabled) {
+        btn.setAttribute('aria-disabled', 'true');
+      } else {
+        btn.removeAttribute('aria-disabled');
       }
     }
+  }
+
+  function hidePick() {
+    pickingChallenge = false;
+    var pick = document.getElementById('bluffPick');
+    if (pick) {
+      pick.classList.add('hidden');
+    }
+  }
+
+  function openPick(game) {
+    var pick = document.getElementById('bluffPick');
+    var msg = document.getElementById('bluffPickMsg');
+    var cards = document.getElementById('bluffPickCards');
+    if (!pick || !cards || !game || !game.lastPlay) {
+      return;
+    }
+    var ids = game.lastPlay.challengeCardIds || [];
+    if (!ids.length) {
+      return;
+    }
+    pickingChallenge = true;
+    if (msg) {
+      msg.textContent =
+        'Pick one of ' +
+        game.lastPlay.playerName +
+        "'s " +
+        game.lastPlay.quantity +
+        ' claimed ' +
+        game.lastPlay.declaredRank +
+        (game.lastPlay.quantity === 1 ? '' : 's') +
+        ' to check.';
+    }
+    cards.innerHTML = '';
+    ids.forEach(function (cardId, index) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'bluff-card-back bluff-pick-target';
+      btn.dataset.cardId = cardId;
+      btn.setAttribute('aria-label', 'Check card ' + (index + 1));
+      btn.textContent = '·';
+      btn.addEventListener('click', function () {
+        hidePick();
+        post({
+          type: 'action',
+          action: { type: 'challenge', cardId: cardId },
+        });
+      });
+      cards.appendChild(btn);
+    });
+    pick.classList.remove('hidden');
   }
 
   function bind(send) {
@@ -79,6 +197,7 @@
     var challenge = document.getElementById('bluffChallenge');
     var leave = document.getElementById('bluffLeave');
     var close = document.getElementById('bluffRevealClose');
+    var pickCancel = document.getElementById('bluffPickCancel');
 
     ensureRankButtons();
     paintRankButtons(false);
@@ -90,9 +209,13 @@
         if (!ids.length) {
           return;
         }
+        var game = window.__anshinBluffGame;
+        var lockedRank = resolveLockedRank(game);
+        var rank = lockedRank || declaredRank;
+        hidePick();
         post({
           type: 'action',
-          action: { type: 'play', cardIds: ids, rank: declaredRank },
+          action: { type: 'play', cardIds: ids, rank: rank },
         });
         selected = {};
       });
@@ -102,6 +225,7 @@
       pass.dataset.bound = '1';
       pass.addEventListener('click', function () {
         selected = {};
+        hidePick();
         post({ type: 'action', action: { type: 'pass' } });
       });
     }
@@ -109,13 +233,25 @@
     if (challenge && !challenge.dataset.bound) {
       challenge.dataset.bound = '1';
       challenge.addEventListener('click', function () {
-        post({ type: 'action', action: { type: 'challenge' } });
+        var game = window.__anshinBluffGame;
+        if (!game || !game.canChallenge) {
+          return;
+        }
+        openPick(game);
+      });
+    }
+
+    if (pickCancel && !pickCancel.dataset.bound) {
+      pickCancel.dataset.bound = '1';
+      pickCancel.addEventListener('click', function () {
+        hidePick();
       });
     }
 
     if (leave && !leave.dataset.bound) {
       leave.dataset.bound = '1';
       leave.addEventListener('click', function () {
+        hidePick();
         post({ type: 'leave' });
       });
     }
@@ -312,6 +448,7 @@
     var key = challengeKey(game.lastChallenge);
     if (key !== lastChallengeKey) {
       lastChallengeKey = key;
+      hidePick();
       reveal.classList.remove('hidden');
     }
     if (title) {
@@ -320,10 +457,11 @@
     if (msg) {
       msg.textContent =
         game.lastChallenge.message +
-        ' Declared ' +
+        ' Checked 1 of ' +
         game.lastChallenge.quantity +
-        '× ' +
+        ' claimed ' +
         game.lastChallenge.declaredRank +
+        (game.lastChallenge.quantity === 1 ? '' : 's') +
         '.';
     }
     if (cards) {
@@ -340,9 +478,13 @@
       return;
     }
     var myTurn = game.currentPlayerId === game.yourPlayerId && !game.winnerId;
+    var lockedRank = resolveLockedRank(game);
+    if (!game.canChallenge && pickingChallenge) {
+      hidePick();
+    }
     renderOpponents(game);
     renderPile(game);
-    paintRankButtons(myTurn);
+    paintRankButtons(myTurn, lockedRank);
     renderHand(game, myTurn);
     renderReveal(game);
 
@@ -369,7 +511,11 @@
       if (selectedCount) {
         parts.push('Selected: ' + selectedCount);
       }
-      parts.push('Rank: ' + declaredRank);
+      if (lockedRank) {
+        parts.push('Rank locked: ' + lockedRank + ' (challenge to change)');
+      } else {
+        parts.push('Rank: ' + declaredRank);
+      }
       selectedLine.textContent = parts.join(' · ');
     }
     if (status) {

@@ -61,6 +61,7 @@ export interface BluffChallengeResult {
   accusedName: string;
   declaredRank: BluffRank;
   quantity: number;
+  /** The single card the challenger chose to inspect. */
   revealedCards: BluffCard[];
   wasBluff: boolean;
   collectorId: string;
@@ -72,6 +73,11 @@ export interface BluffSession {
   players: BluffPlayer[];
   discardPile: BluffCard[];
   lastPlay: BluffLastPlay | null;
+  /**
+   * Rank locked for the current pile. Set on the first claim and kept for every
+   * seat until a challenge clears the pile.
+   */
+  claimedRank: BluffRank | null;
   /** Player who emptied their hand; win is delayed until the next seat plays or times out. */
   pendingWinPlayerId: string | null;
   lastChallenge: BluffChallengeResult | null;
@@ -93,6 +99,11 @@ export interface BluffLastPlayView {
   playerName: string;
   declaredRank: BluffRank;
   quantity: number;
+  /**
+   * Opaque ids of the face-down cards in the last play.
+   * Only sent to the current seat when a challenge is allowed — ranks/suits stay hidden.
+   */
+  challengeCardIds?: string[];
 }
 
 export interface BluffPublicState {
@@ -100,6 +111,8 @@ export interface BluffPublicState {
   hand: BluffCard[];
   discardCount: number;
   lastPlay: BluffLastPlayView | null;
+  /** Rank every seat must declare until a challenge clears the pile. */
+  claimedRank: BluffRank | null;
   lastChallenge: BluffChallengeResult | null;
   canChallenge: boolean;
   currentPlayerId: string;

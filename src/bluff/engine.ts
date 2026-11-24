@@ -1,4 +1,4 @@
-import { createDeck, shuffle } from './deck';
+import { createDeck, MAX_BLUFF_DECKS, MIN_BLUFF_DECKS, shuffle } from './deck';
 import {
   BLUFF_RANKS,
   BluffCard,
@@ -20,13 +20,21 @@ export function isBluffRank(value: unknown): value is BluffRank {
 
 export function createGame(
   players: { id: string; name: string }[],
-  random: () => number = Math.random
+  random: () => number = Math.random,
+  deckCount: number = MIN_BLUFF_DECKS
 ): BluffSession {
-  if (players.length < 2 || players.length > 4) {
-    throw new Error('Bluff requires 2 to 4 players');
+  if (players.length < 2 || players.length > 6) {
+    throw new Error('Bluff requires 2 to 6 players');
+  }
+  if (
+    !Number.isInteger(deckCount) ||
+    deckCount < MIN_BLUFF_DECKS ||
+    deckCount > MAX_BLUFF_DECKS
+  ) {
+    throw new Error(`Bluff supports ${MIN_BLUFF_DECKS} or ${MAX_BLUFF_DECKS} decks.`);
   }
 
-  const deck = shuffle(createDeck(), random);
+  const deck = shuffle(createDeck(deckCount), random);
   const seats: BluffPlayer[] = players.map((player) => ({
     id: player.id,
     name: player.name,
@@ -53,6 +61,7 @@ export function createGame(
     players: seats,
     discardPile: [],
     lastPlay: null,
+    claimedRank: null,
     pendingWinPlayerId: null,
     lastChallenge: null,
     currentPlayerIndex: startIndex,
@@ -94,6 +103,16 @@ export function playCards(
     }
   }
 
+  // While cards remain in the pile, every seat must keep the same declared rank.
+  // The lock clears only when a challenge empties the pile.
+  const lockedRank =
+    next.discardPile.length > 0
+      ? (next.claimedRank ?? next.lastPlay?.declaredRank ?? null)
+      : null;
+  if (lockedRank && declaredRank !== lockedRank) {
+    return { ok: false, reason: `Must declare ${lockedRank}.` };
+  }
+
   const actor = current(next);
   const selected: BluffCard[] = [];
   for (const cardId of cardIds) {
@@ -113,6 +132,7 @@ export function playCards(
     quantity: selected.length,
     cards: selected.map((card) => ({ ...card })),
   };
+  next.claimedRank = declaredRank;
   next.lastChallenge = null;
   next.pendingWinPlayerId = actor.hand.length === 0 ? actor.id : null;
 
@@ -126,7 +146,15 @@ export function playCards(
   return { ok: true, session: next };
 }
 
-export function callChallenge(session: BluffSession, challengerId: string): BluffResult {
+/**
+ * Challenge the last play by inspecting exactly one of its face-down cards.
+ * Bluff is caught only if that selected card's rank differs from the claim.
+ */
+export function callChallenge(
+  session: BluffSession,
+  challengerId: string,
+  selectedCardId: string
+): BluffResult {
   if (session.winnerId) {
     return { ok: false, reason: 'Game is over.' };
   }
@@ -139,22 +167,31 @@ export function callChallenge(session: BluffSession, challengerId: string): Bluf
   if (session.lastPlay.playerId === challengerId) {
     return { ok: false, reason: 'You cannot challenge yourself.' };
   }
+  if (typeof selectedCardId !== 'string' || !selectedCardId) {
+    return { ok: false, reason: 'Pick one card to check.' };
+  }
 
   const next = clone(session);
   const play = next.lastPlay as BluffLastPlay;
+  const selected = play.cards.find((card) => card.id === selectedCardId);
+  if (!selected) {
+    return { ok: false, reason: 'That card is not in the last play.' };
+  }
+
   const challenger = next.players.find((player) => player.id === challengerId);
   const accused = next.players.find((player) => player.id === play.playerId);
   if (!challenger || !accused) {
     return { ok: false, reason: 'Unknown player.' };
   }
 
-  const wasBluff = play.cards.some((card) => card.rank !== play.declaredRank);
+  const wasBluff = selected.rank !== play.declaredRank;
   const collector = wasBluff ? accused : challenger;
   const pile = next.discardPile.map((card) => ({ ...card }));
   collector.hand.push(...pile);
   collector.hand.sort(compareCards);
   next.discardPile = [];
   next.lastPlay = null;
+  next.claimedRank = null;
 
   const message = wasBluff
     ? `BLUFF CAUGHT! ${accused.name} must collect all cards.`
@@ -167,7 +204,7 @@ export function callChallenge(session: BluffSession, challengerId: string): Bluf
     accusedName: accused.name,
     declaredRank: play.declaredRank,
     quantity: play.quantity,
-    revealedCards: play.cards.map((card) => ({ ...card })),
+    revealedCards: [{ ...selected }],
     wasBluff,
     collectorId: collector.id,
     collectorName: collector.name,
@@ -219,6 +256,7 @@ export function personalize(
 
   const currentId = session.players[session.currentPlayerIndex]?.id ?? '';
   const myTurn = currentId === forPlayerId && !session.winnerId;
+  const canChallenge = myTurn && !!session.lastPlay;
 
   return {
     opponents,
@@ -230,15 +268,24 @@ export function personalize(
           playerName: session.lastPlay.playerName,
           declaredRank: session.lastPlay.declaredRank,
           quantity: session.lastPlay.quantity,
+          // Ids only — challenger picks one face-down card without seeing ranks.
+          ...(canChallenge
+            ? { challengeCardIds: session.lastPlay.cards.map((card) => card.id) }
+            : {}),
         }
       : null,
+    // Expose a lock only while the face-down pile still has cards.
+    claimedRank:
+      session.discardPile.length > 0
+        ? (session.claimedRank ?? session.lastPlay?.declaredRank ?? null)
+        : null,
     lastChallenge: session.lastChallenge
       ? {
           ...session.lastChallenge,
           revealedCards: session.lastChallenge.revealedCards.map((card) => ({ ...card })),
         }
       : null,
-    canChallenge: myTurn && !!session.lastPlay,
+    canChallenge,
     currentPlayerId: currentId,
     yourPlayerId: forPlayerId,
     status: session.status,
@@ -276,6 +323,7 @@ export function dropPlayer(session: BluffSession, playerId: string): BluffSessio
     next.winnerId = next.players[0].id;
     next.pendingWinPlayerId = null;
     next.lastPlay = null;
+    next.claimedRank = null;
     next.status = `${next.players[0].name} wins!`;
     return next;
   }
@@ -340,6 +388,7 @@ export function makeTestGame(partial: Partial<BluffSession> & { players: BluffPl
   return {
     discardPile: [],
     lastPlay: null,
+    claimedRank: null,
     pendingWinPlayerId: null,
     lastChallenge: null,
     currentPlayerIndex: 0,
@@ -432,6 +481,7 @@ function clone(session: BluffSession): BluffSession {
           cards: session.lastPlay.cards.map((card) => ({ ...card })),
         }
       : null,
+    claimedRank: session.claimedRank,
     pendingWinPlayerId: session.pendingWinPlayerId,
     lastChallenge: session.lastChallenge
       ? {

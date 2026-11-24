@@ -57,7 +57,7 @@ Optional remote host for Uno, Ludo, and Bluff rooms (e.g. AWS EC2 **t3.micro**).
 1. **Host room** → **Local** starts a room on this machine (join URL includes a fresh `?t=`).
 2. **Host room** → **Remote** connects to the Server Join URL. The field must be a `ws://` or `wss://` URL that includes `?t=`. `anshin.serverUrl` pre-fills it.
 3. **Join room** → paste the same `ws://…?t=…` address. The first player in an empty lobby is the host.
-4. In the lobby the host chooses **Uno**, **Ludo**, or **Bluff**, then **Start game**. Uno needs 2–6 players and shows its card settings. Ludo and Bluff need 2–4 players and have no extra settings.
+4. In the lobby the host chooses **Uno**, **Ludo**, or **Bluff**, then **Start game**. Uno and Bluff need 2–6 players; Uno shows its card settings and Bluff shows the decks dropdown. Ludo needs 2–4 players and has no extra settings.
 
 ## Deploy on AWS t3.micro
 

@@ -24,6 +24,7 @@
   const gameSelect = document.getElementById('gameSelect');
   const chosenGame = document.getElementById('chosenGame');
   const cardsPerPlayerInput = document.getElementById('cardsPerPlayerInput');
+  const bluffDeckCountSelect = document.getElementById('bluffDeckCountSelect');
   const guaranteeSpecialInput = document.getElementById('guaranteeSpecialInput');
   const ludoScreen = document.getElementById('ludoScreen');
   const bluffScreen = document.getElementById('bluffScreen');
@@ -137,6 +138,14 @@
       }
       cardsPerPlayerInput.value = String(cards);
     }
+    var deckCount = 1;
+    if (bluffDeckCountSelect) {
+      var decks = parseInt(bluffDeckCountSelect.value, 10);
+      if (decks === 2) {
+        deckCount = 2;
+      }
+      bluffDeckCountSelect.value = String(deckCount);
+    }
     var game = pendingGame || (gameSelect && gameSelect.value) || 'uno';
     pendingGame = game;
     vscode.postMessage({ type: 'setGame', game: game });
@@ -145,6 +154,7 @@
       game: game,
       guaranteeSpecial: !!(guaranteeSpecialInput && guaranteeSpecialInput.checked),
       cardsPerPlayer: cards,
+      deckCount: deckCount,
     });
   });
 
@@ -402,7 +412,8 @@
     }
 
     if (gid === 'bluff') {
-      appTitleEl.textContent = 'Anshin · Bluff';
+      var bluffVer = state.extensionVersion ? ' · v' + state.extensionVersion : '';
+      appTitleEl.textContent = 'Anshin · Bluff' + bluffVer;
       if (window.AnshinBluff) {
         window.AnshinBluff.render(state.game);
       } else if (statusEl) {

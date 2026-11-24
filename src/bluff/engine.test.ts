@@ -48,6 +48,18 @@ describe('bluff deck', () => {
     assert.strictEqual(deck.filter((item) => item.suit === 'spades').length, 13);
   });
 
+  it('creates two decks with unique ids', () => {
+    const deck = createDeck(2);
+    assert.strictEqual(deck.length, 104);
+    assert.strictEqual(new Set(deck.map((item) => item.id)).size, 104);
+    assert.strictEqual(deck.filter((item) => item.rank === 'Ace').length, 8);
+  });
+
+  it('rejects invalid deck counts', () => {
+    assert.throws(() => createDeck(0), /1 or 2 decks/);
+    assert.throws(() => createDeck(3), /1 or 2 decks/);
+  });
+
   it('shuffles without changing membership', () => {
     const deck = createDeck();
     const ids = deck.map((item) => item.id).sort();
@@ -56,8 +68,17 @@ describe('bluff deck', () => {
   });
 });
 
+const SIX = [
+  { id: 'p1', name: 'Ada' },
+  { id: 'p2', name: 'Bea' },
+  { id: 'p3', name: 'Cal' },
+  { id: 'p4', name: 'Deb' },
+  { id: 'p5', name: 'Eve' },
+  { id: 'p6', name: 'Fay' },
+];
+
 describe('bluff deal', () => {
-  it('deals all cards across 2–4 players', () => {
+  it('deals all cards across 2–6 players', () => {
     const two = createGame(PLAYERS, fixed([0.2]));
     assert.strictEqual(two.players.reduce((sum, seat) => sum + seat.hand.length, 0), 52);
     assert.strictEqual(two.players[0].hand.length, 26);
@@ -76,18 +97,45 @@ describe('bluff deal', () => {
 
     const four = createGame(FOUR, fixed([0.4]));
     assert.ok(four.players.every((seat) => seat.hand.length === 13));
+
+    const five = createGame(SIX.slice(0, 5), fixed([0.3]));
+    const fiveCounts = five.players.map((seat) => seat.hand.length).sort();
+    assert.deepStrictEqual(fiveCounts, [10, 10, 10, 11, 11]);
+
+    const six = createGame(SIX, fixed([0.5]));
+    const sixCounts = six.players.map((seat) => seat.hand.length).sort();
+    assert.deepStrictEqual(sixCounts, [8, 8, 9, 9, 9, 9]);
+  });
+
+  it('deals two full decks when deckCount is 2', () => {
+    const two = createGame(PLAYERS, fixed([0.2]), 2);
+    assert.strictEqual(two.players.reduce((sum, seat) => sum + seat.hand.length, 0), 104);
+    assert.strictEqual(two.players[0].hand.length, 52);
+    assert.strictEqual(two.players[1].hand.length, 52);
+
+    const four = createGame(FOUR, fixed([0.4]), 2);
+    assert.ok(four.players.every((seat) => seat.hand.length === 26));
+
+    const six = createGame(SIX, fixed([0.5]), 2);
+    const sixCounts = six.players.map((seat) => seat.hand.length).sort();
+    assert.deepStrictEqual(sixCounts, [17, 17, 17, 17, 18, 18]);
   });
 
   it('rejects invalid player counts', () => {
-    assert.throws(() => createGame([{ id: 'p1', name: 'Ada' }]), /2 to 4/);
+    assert.throws(() => createGame([{ id: 'p1', name: 'Ada' }]), /2 to 6/);
     assert.throws(
       () =>
         createGame([
-          ...FOUR,
-          { id: 'p5', name: 'Eve' },
+          ...SIX,
+          { id: 'p7', name: 'Gus' },
         ]),
-      /2 to 4/
+      /2 to 6/
     );
+  });
+
+  it('rejects invalid deck counts', () => {
+    assert.throws(() => createGame(PLAYERS, fixed([0.1]), 0), /1 or 2 decks/);
+    assert.throws(() => createGame(PLAYERS, fixed([0.1]), 3), /1 or 2 decks/);
   });
 });
 
@@ -120,12 +168,18 @@ describe('bluff play and challenge', () => {
     assert.strictEqual(view.lastPlay?.declaredRank, 'Ace');
     assert.strictEqual(view.lastPlay?.quantity, 2);
     assert.ok(!('cards' in (view.lastPlay as object)));
+    assert.deepStrictEqual(view.lastPlay?.challengeCardIds, ['c1', 'c2']);
     assert.strictEqual(view.opponents[0].cardCount, 1);
     assert.strictEqual(view.canChallenge, true);
     assert.deepStrictEqual(
       view.hand.map((item) => item.id),
       ['c4']
     );
+
+    // Non-challenger seats do not receive pickable card ids.
+    const accusedView = personalize(played.session, 'p1');
+    assert.strictEqual(accusedView.canChallenge, false);
+    assert.ok(!('challengeCardIds' in (accusedView.lastPlay as object)));
   });
 
   it('rejects invalid selections and out-of-turn plays', () => {
@@ -142,6 +196,53 @@ describe('bluff play and challenge', () => {
     assert.strictEqual(playCards(session, 'p1', ['c1', 'c2', 'x', 'y', 'z'], '5').ok, false);
   });
 
+  it('locks declared rank to the previous claim until the pile clears', () => {
+    const session = makeTestGame({
+      players: [
+        { id: 'p1', name: 'Ada', hand: [card('c1', '2'), card('c2', '3')] },
+        { id: 'p2', name: 'Bea', hand: [card('c3', '4'), card('c4', '5')] },
+      ],
+    });
+    const first = playCards(session, 'p1', ['c1'], 'Ace');
+    assert.strictEqual(first.ok, true);
+    if (!first.ok) {
+      return;
+    }
+    const wrongRank = playCards(first.session, 'p2', ['c3'], 'King');
+    assert.strictEqual(wrongRank.ok, false);
+    if (wrongRank.ok) {
+      return;
+    }
+    assert.match(wrongRank.reason, /Must declare Ace/);
+
+    const sameRank = playCards(first.session, 'p2', ['c3'], 'Ace');
+    assert.strictEqual(sameRank.ok, true);
+    if (!sameRank.ok) {
+      return;
+    }
+    assert.strictEqual(sameRank.session.lastPlay?.declaredRank, 'Ace');
+    assert.strictEqual(sameRank.session.claimedRank, 'Ace');
+    assert.strictEqual(sameRank.session.discardPile.length > 0, true);
+    assert.strictEqual(personalize(sameRank.session, 'p1').claimedRank, 'Ace');
+    assert.strictEqual(personalize(sameRank.session, 'p1').discardCount > 0, true);
+
+    // Rank stays locked when the turn returns to the player who started the pile,
+    // until a challenge empties the upper pile.
+    const backToStarter = playCards(sameRank.session, 'p1', ['c2'], 'King');
+    assert.strictEqual(backToStarter.ok, false);
+    if (!backToStarter.ok) {
+      assert.match(backToStarter.reason, /Must declare Ace/);
+    }
+
+    const starterSameRank = playCards(sameRank.session, 'p1', ['c2'], 'Ace');
+    assert.strictEqual(starterSameRank.ok, true);
+    if (!starterSameRank.ok) {
+      return;
+    }
+    assert.strictEqual(starterSameRank.session.claimedRank, 'Ace');
+    assert.strictEqual(starterSameRank.session.discardPile.length > 0, true);
+  });
+
   it('catches a bluff and gives the pile to the accused', () => {
     let session = makeTestGame({
       players: [
@@ -155,14 +256,19 @@ describe('bluff play and challenge', () => {
     if (!played.ok) {
       return;
     }
-    const challenged = callChallenge(played.session, 'p2');
+    const challenged = callChallenge(played.session, 'p2', 'c1');
     assert.strictEqual(challenged.ok, true);
     if (!challenged.ok) {
       return;
     }
     assert.strictEqual(challenged.session.lastChallenge?.wasBluff, true);
     assert.match(challenged.session.lastChallenge?.message ?? '', /BLUFF CAUGHT/);
+    assert.deepStrictEqual(
+      challenged.session.lastChallenge?.revealedCards.map((item) => item.id),
+      ['c1']
+    );
     assert.strictEqual(challenged.session.discardPile.length, 0);
+    assert.strictEqual(challenged.session.claimedRank, null);
     assert.strictEqual(challenged.session.players[0].hand.length, 3); // leftover 2 + King + Queen
     assert.strictEqual(challenged.session.currentPlayerIndex, 1); // after collector Ada
   });
@@ -180,15 +286,94 @@ describe('bluff play and challenge', () => {
     if (!played.ok) {
       return;
     }
-    const challenged = callChallenge(played.session, 'p2');
+    const challenged = callChallenge(played.session, 'p2', 'c1');
     assert.strictEqual(challenged.ok, true);
     if (!challenged.ok) {
       return;
     }
     assert.strictEqual(challenged.session.lastChallenge?.wasBluff, false);
     assert.match(challenged.session.lastChallenge?.message ?? '', /WRONG CHALLENGE/);
+    assert.strictEqual(challenged.session.claimedRank, null);
     assert.strictEqual(challenged.session.players[1].hand.length, 3);
     assert.strictEqual(challenged.session.currentPlayerIndex, 0); // after collector Bea
+  });
+
+  it('judges only the selected card when a mixed play is challenged', () => {
+    const session = makeTestGame({
+      players: [
+        {
+          id: 'p1',
+          name: 'Ada',
+          hand: [card('c1', 'Ace'), card('c2', 'King'), card('c3', '2')],
+        },
+        { id: 'p2', name: 'Bea', hand: [card('c4', '3')] },
+      ],
+      discardPile: [card('old', 'Queen')],
+    });
+    const played = playCards(session, 'p1', ['c1', 'c2'], 'Ace');
+    assert.strictEqual(played.ok, true);
+    if (!played.ok) {
+      return;
+    }
+
+    // Picking the truthful Ace fails the challenge even though a King was also played.
+    const miss = callChallenge(played.session, 'p2', 'c1');
+    assert.strictEqual(miss.ok, true);
+    if (!miss.ok) {
+      return;
+    }
+    assert.strictEqual(miss.session.lastChallenge?.wasBluff, false);
+    assert.deepStrictEqual(
+      miss.session.lastChallenge?.revealedCards.map((item) => item.rank),
+      ['Ace']
+    );
+
+    const again = playCards(
+      makeTestGame({
+        players: [
+          {
+            id: 'p1',
+            name: 'Ada',
+            hand: [card('c1', 'Ace'), card('c2', 'King'), card('c3', '2')],
+          },
+          { id: 'p2', name: 'Bea', hand: [card('c4', '3')] },
+        ],
+        discardPile: [card('old', 'Queen')],
+      }),
+      'p1',
+      ['c1', 'c2'],
+      'Ace'
+    );
+    assert.strictEqual(again.ok, true);
+    if (!again.ok) {
+      return;
+    }
+    const hit = callChallenge(again.session, 'p2', 'c2');
+    assert.strictEqual(hit.ok, true);
+    if (!hit.ok) {
+      return;
+    }
+    assert.strictEqual(hit.session.lastChallenge?.wasBluff, true);
+    assert.deepStrictEqual(
+      hit.session.lastChallenge?.revealedCards.map((item) => item.id),
+      ['c2']
+    );
+  });
+
+  it('rejects challenges without a valid selected card', () => {
+    const session = makeTestGame({
+      players: [
+        { id: 'p1', name: 'Ada', hand: [card('c1', '2')] },
+        { id: 'p2', name: 'Bea', hand: [card('c2', '3')] },
+      ],
+    });
+    const played = playCards(session, 'p1', ['c1'], 'Ace');
+    assert.strictEqual(played.ok, true);
+    if (!played.ok) {
+      return;
+    }
+    assert.strictEqual(callChallenge(played.session, 'p2', '').ok, false);
+    assert.strictEqual(callChallenge(played.session, 'p2', 'missing').ok, false);
   });
 
   it('blocks challenges after a newer play and blocks empty discard challenges', () => {
@@ -198,20 +383,20 @@ describe('bluff play and challenge', () => {
         { id: 'p2', name: 'Bea', hand: [card('c3', '4'), card('c4', '5')] },
       ],
     });
-    assert.strictEqual(callChallenge(session, 'p1').ok, false);
+    assert.strictEqual(callChallenge(session, 'p1', 'c1').ok, false);
 
     const first = playCards(session, 'p1', ['c1'], 'Ace');
     assert.strictEqual(first.ok, true);
     if (!first.ok) {
       return;
     }
-    const second = playCards(first.session, 'p2', ['c3'], 'King');
+    const second = playCards(first.session, 'p2', ['c3'], 'Ace');
     assert.strictEqual(second.ok, true);
     if (!second.ok) {
       return;
     }
     // Only the latest play is challengeable, and only by the current seat (p1).
-    assert.strictEqual(callChallenge(second.session, 'p2').ok, false);
+    assert.strictEqual(callChallenge(second.session, 'p2', 'c3').ok, false);
     assert.strictEqual(second.session.lastPlay?.playerId, 'p2');
   });
 });
@@ -232,7 +417,7 @@ describe('bluff win and final challenge', () => {
     assert.strictEqual(played.session.winnerId, null);
     assert.strictEqual(played.session.pendingWinPlayerId, 'p1');
 
-    const next = playCards(played.session, 'p2', ['c2'], 'King');
+    const next = playCards(played.session, 'p2', ['c2'], 'Ace');
     assert.strictEqual(next.ok, true);
     if (!next.ok) {
       return;
@@ -252,7 +437,7 @@ describe('bluff win and final challenge', () => {
     if (!played.ok) {
       return;
     }
-    const challenged = callChallenge(played.session, 'p2');
+    const challenged = callChallenge(played.session, 'p2', 'c1');
     assert.strictEqual(challenged.ok, true);
     if (!challenged.ok) {
       return;
@@ -274,7 +459,7 @@ describe('bluff win and final challenge', () => {
     if (!played.ok) {
       return;
     }
-    const challenged = callChallenge(played.session, 'p2');
+    const challenged = callChallenge(played.session, 'p2', 'c1');
     assert.strictEqual(challenged.ok, true);
     if (!challenged.ok) {
       return;
@@ -383,10 +568,22 @@ describe('bluff drop and module', () => {
     assert.ok(view.lastPlay);
     assert.strictEqual(
       Object.keys(view.lastPlay).sort().join(','),
-      'declaredRank,playerId,playerName,quantity'
+      'challengeCardIds,declaredRank,playerId,playerName,quantity'
     );
+    assert.deepStrictEqual(view.lastPlay.challengeCardIds, cardIds);
     const raw = JSON.stringify(view.lastPlay);
     assert.ok(!raw.includes('suit'));
-    assert.ok(!raw.includes('"id"'));
+    assert.ok(!raw.includes('"rank"'));
+  });
+
+  it('honors deckCount from create options', () => {
+    const one = bluffModule.create(PLAYERS, fixed([0.2]), {});
+    assert.strictEqual(one.players.reduce((sum, seat) => sum + seat.hand.length, 0), 52);
+
+    const two = bluffModule.create(PLAYERS, fixed([0.2]), { deckCount: 2 });
+    assert.strictEqual(two.players.reduce((sum, seat) => sum + seat.hand.length, 0), 104);
+
+    const fallback = bluffModule.create(PLAYERS, fixed([0.2]), { deckCount: 9 });
+    assert.strictEqual(fallback.players.reduce((sum, seat) => sum + seat.hand.length, 0), 52);
   });
 });

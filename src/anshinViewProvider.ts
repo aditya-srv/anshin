@@ -123,6 +123,10 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
           typeof message.cardsPerPlayer === 'number' && Number.isInteger(message.cardsPerPlayer)
             ? message.cardsPerPlayer
             : 7;
+        const deckCount =
+          typeof message.deckCount === 'number' && Number.isInteger(message.deckCount)
+            ? message.deckCount
+            : 1;
         const game =
           typeof message.game === 'string' && message.game.trim() ? message.game.trim() : undefined;
         if (game) {
@@ -133,6 +137,7 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
           ...(game ? { game } : {}),
           guaranteeSpecial: message.guaranteeSpecial !== false,
           cardsPerPlayer: cards,
+          deckCount,
         });
         break;
       }

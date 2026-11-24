@@ -2,9 +2,11 @@ import {
   ApplyResult,
   GameAction,
   GameModule,
+  GameOptions,
   GamePlayer,
   PersonalizeContext,
 } from '../games/types';
+import { MAX_BLUFF_DECKS, MIN_BLUFF_DECKS } from './deck';
 import {
   callChallenge,
   forcePassTurn,
@@ -16,6 +18,16 @@ import {
   dropPlayer,
 } from './engine';
 import { BluffPublicState, BluffSession } from './types';
+
+function deckCountOf(options: GameOptions): number {
+  const value = options.deckCount;
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    if (value >= MIN_BLUFF_DECKS && value <= MAX_BLUFF_DECKS) {
+      return value;
+    }
+  }
+  return MIN_BLUFF_DECKS;
+}
 
 function asCardIds(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length === 0) {
@@ -42,7 +54,10 @@ function apply(session: BluffSession, playerId: string, action: GameAction): App
       return result.ok ? { ok: true, session: result.session } : result;
     }
     case 'challenge': {
-      const result = callChallenge(session, playerId);
+      if (typeof action.cardId !== 'string' || !action.cardId) {
+        return { ok: false, reason: 'Pick one card to check.' };
+      }
+      const result = callChallenge(session, playerId, action.cardId);
       return result.ok ? { ok: true, session: result.session } : result;
     }
     case 'pass': {
@@ -65,10 +80,10 @@ export const bluffModule: GameModule<BluffSession, BluffPublicState> = {
   id: 'bluff',
   label: 'Bluff',
   minPlayers: 2,
-  maxPlayers: 4,
+  maxPlayers: 6,
   turnClock: false,
-  create(players: GamePlayer[], random: () => number): BluffSession {
-    return createGame(players, random);
+  create(players: GamePlayer[], random: () => number, options: GameOptions): BluffSession {
+    return createGame(players, random, deckCountOf(options));
   },
   apply,
   onTimeout,

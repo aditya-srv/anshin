@@ -29,7 +29,13 @@ export type IncomingMessage =
   | { type: 'host'; name: string; remote?: boolean; serverUrl?: string }
   | { type: 'join'; name: string; url: string }
   | { type: 'setGame'; game: string }
-  | { type: 'startGame'; game?: string; guaranteeSpecial?: boolean; cardsPerPlayer?: number }
+  | {
+      type: 'startGame';
+      game?: string;
+      guaranteeSpecial?: boolean;
+      cardsPerPlayer?: number;
+      deckCount?: number;
+    }
   | { type: 'leave' }
   | { type: 'action'; action: GameAction }
   | { type: 'copyJoinUrl' }

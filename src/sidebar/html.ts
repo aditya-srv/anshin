@@ -6,7 +6,7 @@ import { boardPayload } from '../ludo/board';
  * Bust webview script/style caches when media/protocol changes.
  * Bump MEDIA_REV when shipping fixes under the same package version (e.g. 0.0.12).
  */
-const MEDIA_REV = '12c';
+const MEDIA_REV = '13b';
 
 function mediaUri(
   webview: vscode.Webview,
@@ -183,6 +183,7 @@ export function buildSidebarHtml(
       </section>
       <section class="bluff-hand-section">
         <div class="seat-label"><span id="bluffYouLabel">You</span><span id="bluffYouCount" class="seat-count"></span></div>
+        <p id="bluffRankLock" class="bluff-rank-lock hidden" aria-live="polite"></p>
         <div id="bluffRanks" class="bluff-ranks" role="group" aria-label="Declare rank"></div>
         <div id="bluffHand" class="bluff-hand row wrap"></div>
         <p id="bluffSelected" class="bluff-selected"></p>
@@ -196,6 +197,14 @@ export function buildSidebarHtml(
         </div>
       </section>
       <p id="bluffStatus" class="status"></p>
+    </div>
+    <div id="bluffPick" class="bluff-reveal hidden" role="dialog" aria-modal="true">
+      <div class="bluff-reveal-card">
+        <h2 id="bluffPickTitle">Call bluff</h2>
+        <p id="bluffPickMsg" class="status">Pick one face-down card to check against the claim.</p>
+        <div id="bluffPickCards" class="bluff-reveal-cards row center"></div>
+        <button id="bluffPickCancel" type="button" class="secondary">Cancel</button>
+      </div>
     </div>
     <div id="bluffReveal" class="bluff-reveal hidden" role="dialog" aria-modal="true">
       <div class="bluff-reveal-card">
@@ -255,7 +264,14 @@ function unoSettingsHtml(): string {
 }
 
 function bluffSettingsHtml(): string {
-  return `<p class="game-blurb">Trust nobody. Challenge everyone. · 2–4 players</p>`;
+  return `<p class="game-blurb">Trust nobody. Challenge everyone. · 2–6 players</p>
+      <label class="field">
+        <span>Decks</span>
+        <select id="bluffDeckCountSelect">
+          <option value="1" selected>1</option>
+          <option value="2">2</option>
+        </select>
+      </label>`;
 }
 
 function getNonce(): string {

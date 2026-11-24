@@ -66,6 +66,7 @@ export function createGame(
     lastChallenge: null,
     currentPlayerIndex: startIndex,
     winnerId: null,
+    loserId: null,
     status: `Game started. ${seats[startIndex].name}'s turn.`,
     random,
   };
@@ -83,8 +84,8 @@ export function playCards(
   if (!isBluffRank(declaredRank)) {
     return { ok: false, reason: 'Invalid message.' };
   }
-  if (!Array.isArray(cardIds) || cardIds.length < 1 || cardIds.length > 4) {
-    return { ok: false, reason: 'Select between 1 and 4 cards.' };
+  if (!Array.isArray(cardIds) || cardIds.length < 1) {
+    return { ok: false, reason: 'Select at least 1 card.' };
   }
   if (new Set(cardIds).size !== cardIds.length) {
     return { ok: false, reason: 'Duplicate cards.' };
@@ -95,11 +96,15 @@ export function playCards(
 
   const next = clone(session);
 
-  // Playing without challenging settles a pending empty-hand win.
+  // Playing without challenging confirms a pending empty-hand exit.
+  let justOutName: string | null = null;
   if (next.pendingWinPlayerId) {
-    const settled = settlePendingWin(next);
-    if (settled.ok) {
-      return settled;
+    const settled = confirmPendingOut(next);
+    if (settled.kind === 'ended') {
+      return { ok: true, session: next };
+    }
+    if (settled.kind === 'continued') {
+      justOutName = settled.name;
     }
   }
 
@@ -138,10 +143,11 @@ export function playCards(
 
   advanceTurn(next);
   const claim = formatClaim(selected.length, declaredRank);
+  const outPrefix = justOutName ? `${justOutName} is out. ` : '';
   if (next.pendingWinPlayerId) {
-    next.status = `${actor.name} played ${claim} and has no cards left. ${current(next).name} may call bluff or play.`;
+    next.status = `${outPrefix}${actor.name} played ${claim} and has no cards left. ${current(next).name} may call bluff or play.`;
   } else {
-    next.status = `${actor.name} played ${claim}. ${current(next).name}'s turn.`;
+    next.status = `${outPrefix}${actor.name} played ${claim}. ${current(next).name}'s turn.`;
   }
   return { ok: true, session: next };
 }
@@ -216,9 +222,16 @@ export function callChallenge(
   if (next.pendingWinPlayerId) {
     const pending = next.players.find((player) => player.id === next.pendingWinPlayerId);
     if (pending && pending.hand.length === 0) {
-      next.winnerId = pending.id;
+      // Wrong challenge: empty-hand play stands and that seat is out.
       next.pendingWinPlayerId = null;
-      next.status = `${message} ${pending.name} wins!`;
+      if (finishOut(next, pending)) {
+        next.status = `${message} ${pending.name} is out. ${loserName(next)} loses!`;
+        return { ok: true, session: next };
+      }
+      const collectorIndex = next.players.findIndex((player) => player.id === collector.id);
+      next.currentPlayerIndex = (collectorIndex + 1) % next.players.length;
+      skipFinishedSeats(next);
+      next.status = `${message} ${pending.name} is out. ${current(next).name}'s turn.`;
       return { ok: true, session: next };
     }
     next.pendingWinPlayerId = null;
@@ -226,6 +239,7 @@ export function callChallenge(
 
   const collectorIndex = next.players.findIndex((player) => player.id === collector.id);
   next.currentPlayerIndex = (collectorIndex + 1) % next.players.length;
+  skipFinishedSeats(next);
   next.status = `${message} ${current(next).name}'s turn.`;
   return { ok: true, session: next };
 }
@@ -290,6 +304,7 @@ export function personalize(
     yourPlayerId: forPlayerId,
     status: session.status,
     winnerId: session.winnerId,
+    loserId: session.loserId,
     playerCount: session.players.length,
     turnDeadline,
   };
@@ -319,8 +334,10 @@ export function dropPlayer(session: BluffSession, playerId: string): BluffSessio
   }
 
   if (next.players.length === 1) {
+    // Forfeit: last remaining seat wins (others left the room).
     next.currentPlayerIndex = 0;
     next.winnerId = next.players[0].id;
+    next.loserId = null;
     next.pendingWinPlayerId = null;
     next.lastPlay = null;
     next.claimedRank = null;
@@ -333,13 +350,14 @@ export function dropPlayer(session: BluffSession, playerId: string): BluffSessio
   } else if (index === next.currentPlayerIndex) {
     next.currentPlayerIndex = index % next.players.length;
   }
+  skipFinishedSeats(next);
   next.status = `${removed.name} left. ${current(next).name}'s turn.`;
   return next;
 }
 
 /**
  * Current player passes: accept the prior claim (no challenge) and advance.
- * Settles a pending empty-hand win the same way as playing without challenging.
+ * Confirms a pending empty-hand exit the same way as playing without challenging.
  */
 export function passTurn(session: BluffSession, playerId: string): BluffResult {
   if (session.winnerId) {
@@ -349,37 +367,47 @@ export function passTurn(session: BluffSession, playerId: string): BluffResult {
     return { ok: false, reason: 'Not your turn.' };
   }
   const next = clone(session);
+  let justOutName: string | null = null;
   if (next.pendingWinPlayerId) {
-    const settled = settlePendingWin(next);
-    if (settled.ok) {
-      return settled;
+    const settled = confirmPendingOut(next);
+    if (settled.kind === 'ended') {
+      return { ok: true, session: next };
+    }
+    if (settled.kind === 'continued') {
+      justOutName = settled.name;
     }
   }
   const actor = current(next);
   next.lastChallenge = null;
   advanceTurn(next);
-  next.status = `${actor.name} passed. ${current(next).name}'s turn.`;
+  const outPrefix = justOutName ? `${justOutName} is out. ` : '';
+  next.status = `${outPrefix}${actor.name} passed. ${current(next).name}'s turn.`;
   return { ok: true, session: next };
 }
 
 /**
  * Disconnect / timeout on the current seat.
- * Settles a pending empty-hand win (accept without challenge), otherwise advances.
+ * Confirms a pending empty-hand exit (accept without challenge), otherwise advances.
  */
 export function forcePassTurn(session: BluffSession): BluffSession {
   if (session.winnerId) {
     return session;
   }
   const next = clone(session);
+  let justOutName: string | null = null;
   if (next.pendingWinPlayerId) {
-    const settled = settlePendingWin(next);
-    if (settled.ok) {
-      return settled.session;
+    const settled = confirmPendingOut(next);
+    if (settled.kind === 'ended') {
+      return next;
+    }
+    if (settled.kind === 'continued') {
+      justOutName = settled.name;
     }
   }
   const skipped = current(next);
   advanceTurn(next);
-  next.status = `${skipped.name} timed out. ${current(next).name}'s turn.`;
+  const outPrefix = justOutName ? `${justOutName} is out. ` : '';
+  next.status = `${outPrefix}${skipped.name} timed out. ${current(next).name}'s turn.`;
   return next;
 }
 
@@ -393,6 +421,7 @@ export function makeTestGame(partial: Partial<BluffSession> & { players: BluffPl
     lastChallenge: null,
     currentPlayerIndex: 0,
     winnerId: null,
+    loserId: null,
     status: '',
     random: Math.random,
     ...partial,
@@ -404,20 +433,61 @@ export function makeTestGame(partial: Partial<BluffSession> & { players: BluffPl
   };
 }
 
-function settlePendingWin(session: BluffSession): BluffResult {
+type ConfirmOutResult =
+  | { kind: 'ended' }
+  | { kind: 'continued'; name: string }
+  | { kind: 'none' };
+
+/**
+ * Confirm a pending empty-hand exit. Returns `ended` when only one active
+ * player remains (that player loses), `continued` when others still play,
+ * or `none` if the pending seat was invalid.
+ */
+function confirmPendingOut(session: BluffSession): ConfirmOutResult {
   const pendingId = session.pendingWinPlayerId;
   if (!pendingId) {
-    return { ok: false, reason: 'No pending win.' };
+    return { kind: 'none' };
   }
   const pending = session.players.find((player) => player.id === pendingId);
-  if (!pending || pending.hand.length > 0) {
-    session.pendingWinPlayerId = null;
-    return { ok: false, reason: 'Pending win expired.' };
-  }
-  session.winnerId = pendingId;
   session.pendingWinPlayerId = null;
-  session.status = `${pending.name} wins!`;
-  return { ok: true, session };
+  if (!pending || pending.hand.length > 0) {
+    return { kind: 'none' };
+  }
+  if (finishOut(session, pending)) {
+    return { kind: 'ended' };
+  }
+  return { kind: 'continued', name: pending.name };
+}
+
+/** Mark `finished` as out. If one active seat remains, they lose and the match ends. */
+function finishOut(session: BluffSession, finished: BluffPlayer): boolean {
+  const active = session.players.filter((player) => player.hand.length > 0);
+  if (active.length === 1) {
+    const loser = active[0];
+    session.loserId = loser.id;
+    session.winnerId = finished.id;
+    session.pendingWinPlayerId = null;
+    session.lastPlay = null;
+    session.claimedRank = null;
+    session.status = `${finished.name} is out. ${loser.name} loses!`;
+    return true;
+  }
+  if (active.length === 0) {
+    // Degenerate: everyone empty — treat the finisher as the announced winner.
+    session.winnerId = finished.id;
+    session.loserId = null;
+    session.pendingWinPlayerId = null;
+    session.lastPlay = null;
+    session.claimedRank = null;
+    session.status = `${finished.name} wins!`;
+    return true;
+  }
+  return false;
+}
+
+function loserName(session: BluffSession): string {
+  const loser = session.players.find((player) => player.id === session.loserId);
+  return loser?.name ?? 'Someone';
 }
 
 function current(session: BluffSession): BluffPlayer {
@@ -430,6 +500,21 @@ function advanceTurn(session: BluffSession): void {
     return;
   }
   session.currentPlayerIndex = (session.currentPlayerIndex + 1) % n;
+  skipFinishedSeats(session);
+}
+
+/** Skip seats that already emptied their hand (still seated for the table view). */
+function skipFinishedSeats(session: BluffSession): void {
+  const n = session.players.length;
+  if (n === 0 || session.winnerId) {
+    return;
+  }
+  for (let step = 0; step < n; step++) {
+    if (session.players[session.currentPlayerIndex].hand.length > 0) {
+      return;
+    }
+    session.currentPlayerIndex = (session.currentPlayerIndex + 1) % n;
+  }
 }
 
 function formatClaim(quantity: number, rank: BluffRank): string {
@@ -491,6 +576,7 @@ function clone(session: BluffSession): BluffSession {
       : null,
     currentPlayerIndex: session.currentPlayerIndex,
     winnerId: session.winnerId,
+    loserId: session.loserId,
     status: session.status,
     random: session.random,
   };

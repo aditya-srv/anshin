@@ -304,9 +304,6 @@
         if (selected[card.id]) {
           delete selected[card.id];
         } else {
-          if (Object.keys(selected).length >= 4) {
-            return;
-          }
           selected[card.id] = true;
         }
         var game = window.__anshinBluffGame;
@@ -497,7 +494,7 @@
     var selectedCount = Object.keys(selected).length;
 
     if (play) {
-      play.disabled = !myTurn || selectedCount < 1 || selectedCount > 4;
+      play.disabled = !myTurn || selectedCount < 1;
       play.textContent = selectedCount ? 'Play cards (' + selectedCount + ')' : 'Play cards';
     }
     if (pass) {
@@ -522,7 +519,11 @@
       status.textContent = game.status || '';
     }
     if (tableStatus) {
-      tableStatus.textContent = game.winnerId ? 'Game over' : myTurn ? 'Your move' : 'Waiting…';
+      if (game.winnerId) {
+        tableStatus.textContent = game.loserId ? 'Last player loses' : 'Game over';
+      } else {
+        tableStatus.textContent = myTurn ? 'Your move' : 'Waiting…';
+      }
     }
   }
 

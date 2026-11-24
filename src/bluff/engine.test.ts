@@ -196,6 +196,34 @@ describe('bluff play and challenge', () => {
     assert.strictEqual(playCards(session, 'p1', ['c1', 'c2', 'x', 'y', 'z'], '5').ok, false);
   });
 
+  it('allows playing more than four cards from the hand', () => {
+    const session = makeTestGame({
+      players: [
+        {
+          id: 'p1',
+          name: 'Ada',
+          hand: [
+            card('c1', '2'),
+            card('c2', '3'),
+            card('c3', '4'),
+            card('c4', '5'),
+            card('c5', '6'),
+            card('c6', '7'),
+          ],
+        },
+        { id: 'p2', name: 'Bea', hand: [card('c7', '8')] },
+      ],
+    });
+    const played = playCards(session, 'p1', ['c1', 'c2', 'c3', 'c4', 'c5'], 'Ace');
+    assert.strictEqual(played.ok, true);
+    if (!played.ok) {
+      return;
+    }
+    assert.strictEqual(played.session.lastPlay?.quantity, 5);
+    assert.strictEqual(played.session.discardPile.length, 5);
+    assert.strictEqual(played.session.players[0].hand.length, 1);
+  });
+
   it('locks declared rank to the previous claim until the pile clears', () => {
     const session = makeTestGame({
       players: [
@@ -401,9 +429,9 @@ describe('bluff play and challenge', () => {
   });
 });
 
-describe('bluff win and final challenge', () => {
-  it('delays win until the next player plays instead of challenging', () => {
-    let session = makeTestGame({
+describe('bluff out and final challenge', () => {
+  it('ends with the last card-holder losing when the other empties (2 players)', () => {
+    const session = makeTestGame({
       players: [
         { id: 'p1', name: 'Ada', hand: [card('c1', 'Ace')] },
         { id: 'p2', name: 'Bea', hand: [card('c2', 'King'), card('c3', '2')] },
@@ -423,10 +451,12 @@ describe('bluff win and final challenge', () => {
       return;
     }
     assert.strictEqual(next.session.winnerId, 'p1');
+    assert.strictEqual(next.session.loserId, 'p2');
+    assert.match(next.session.status, /Bea loses/);
   });
 
-  it('lets a truthful final play win after a wrong challenge', () => {
-    let session = makeTestGame({
+  it('marks the emptier out and the last holder loses after a wrong challenge', () => {
+    const session = makeTestGame({
       players: [
         { id: 'p1', name: 'Ada', hand: [card('c1', 'Ace')] },
         { id: 'p2', name: 'Bea', hand: [card('c2', 'King')] },
@@ -443,11 +473,12 @@ describe('bluff win and final challenge', () => {
       return;
     }
     assert.strictEqual(challenged.session.winnerId, 'p1');
+    assert.strictEqual(challenged.session.loserId, 'p2');
     assert.strictEqual(challenged.session.lastChallenge?.wasBluff, false);
   });
 
   it('keeps playing when a final bluff is caught', () => {
-    let session = makeTestGame({
+    const session = makeTestGame({
       players: [
         { id: 'p1', name: 'Ada', hand: [card('c1', 'King')] },
         { id: 'p2', name: 'Bea', hand: [card('c2', 'Ace')] },
@@ -465,12 +496,64 @@ describe('bluff win and final challenge', () => {
       return;
     }
     assert.strictEqual(challenged.session.winnerId, null);
+    assert.strictEqual(challenged.session.loserId, null);
     assert.ok(challenged.session.players[0].hand.length > 0);
     assert.strictEqual(challenged.session.pendingWinPlayerId, null);
   });
 
-  it('settles a pending win on forcePassTurn', () => {
+  it('continues after the first empty hand when 3+ players remain active', () => {
+    const session = makeTestGame({
+      players: [
+        { id: 'p1', name: 'Ada', hand: [card('c1', 'Ace')] },
+        { id: 'p2', name: 'Bea', hand: [card('c2', 'King'), card('c3', '2')] },
+        { id: 'p3', name: 'Cal', hand: [card('c4', '3'), card('c5', '4')] },
+      ],
+    });
+    const played = playCards(session, 'p1', ['c1'], 'Ace');
+    assert.strictEqual(played.ok, true);
+    if (!played.ok) {
+      return;
+    }
+    const passed = passTurn(played.session, 'p2');
+    assert.strictEqual(passed.ok, true);
+    if (!passed.ok) {
+      return;
+    }
+    assert.strictEqual(passed.session.winnerId, null);
+    assert.strictEqual(passed.session.loserId, null);
+    assert.strictEqual(passed.session.pendingWinPlayerId, null);
+    assert.match(passed.session.status, /Ada is out/);
+    // Bea passed after confirming Ada out; turn should be Cal (skip empty Ada).
+    assert.strictEqual(passed.session.players[passed.session.currentPlayerIndex].id, 'p3');
+  });
+
+  it('ends when the second of three players goes out', () => {
     let session = makeTestGame({
+      players: [
+        { id: 'p1', name: 'Ada', hand: [] },
+        { id: 'p2', name: 'Bea', hand: [card('c2', 'Ace')] },
+        { id: 'p3', name: 'Cal', hand: [card('c3', 'King'), card('c4', '2')] },
+      ],
+      currentPlayerIndex: 1,
+      pendingWinPlayerId: null,
+    });
+    const played = playCards(session, 'p2', ['c2'], 'Ace');
+    assert.strictEqual(played.ok, true);
+    if (!played.ok) {
+      return;
+    }
+    const passed = passTurn(played.session, 'p3');
+    assert.strictEqual(passed.ok, true);
+    if (!passed.ok) {
+      return;
+    }
+    assert.strictEqual(passed.session.winnerId, 'p2');
+    assert.strictEqual(passed.session.loserId, 'p3');
+    assert.match(passed.session.status, /Cal loses/);
+  });
+
+  it('settles a pending out on forcePassTurn', () => {
+    const session = makeTestGame({
       players: [
         { id: 'p1', name: 'Ada', hand: [] },
         { id: 'p2', name: 'Bea', hand: [card('c2', 'King')] },
@@ -488,6 +571,7 @@ describe('bluff win and final challenge', () => {
     });
     const next = forcePassTurn(session);
     assert.strictEqual(next.winnerId, 'p1');
+    assert.strictEqual(next.loserId, 'p2');
   });
 
   it('lets the current player pass to the next seat', () => {
@@ -508,7 +592,7 @@ describe('bluff win and final challenge', () => {
     assert.strictEqual(passTurn(session, 'p2').ok, false);
   });
 
-  it('awards a pending win when the next seat passes', () => {
+  it('marks pending out when the next seat passes (2 players → last loses)', () => {
     const session = makeTestGame({
       players: [
         { id: 'p1', name: 'Ada', hand: [] },
@@ -531,11 +615,12 @@ describe('bluff win and final challenge', () => {
       return;
     }
     assert.strictEqual(passed.session.winnerId, 'p1');
+    assert.strictEqual(passed.session.loserId, 'p2');
   });
 });
 
 describe('bluff drop and module', () => {
-  it('awards the last remaining player', () => {
+  it('awards the last remaining player on forfeit leave', () => {
     const session = makeTestGame({
       players: [
         { id: 'p1', name: 'Ada', hand: [card('c1', '2')] },
@@ -544,6 +629,7 @@ describe('bluff drop and module', () => {
     });
     const next = dropPlayer(session, 'p2');
     assert.strictEqual(next.winnerId, 'p1');
+    assert.strictEqual(next.loserId, null);
   });
 
   it('maps module actions and keeps private cards out of personalize', () => {

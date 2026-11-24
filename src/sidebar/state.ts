@@ -110,17 +110,28 @@ export function applyServerMessage(
         },
         resumeToken: msg.resumeToken,
       };
-    case 'gameOver':
+    case 'gameOver': {
+      const game = msg.state as GameView;
+      const loserId =
+        game && typeof game === 'object' && 'loserId' in game
+          ? (game as BluffPublicState).loserId
+          : null;
+      // Bluff elimination ends with a loser; prefer the engine status over "X wins!".
+      const overStatus =
+        loserId && statusOf(game)
+          ? statusOf(game)
+          : `${msg.winnerName} wins!`;
       return {
         state: {
           ...state,
           screen: 'game',
           gameId: msg.game,
-          game: msg.state as GameView,
-          status: `${msg.winnerName} wins!`,
+          game,
+          status: overStatus,
         },
         resumeToken: msg.resumeToken,
       };
+    }
     case 'waiting':
       return {
         state: {

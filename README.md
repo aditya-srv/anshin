@@ -16,10 +16,10 @@ Extension id: `aditya.anshin`
 
 1. Host creates or joins a room the same way as Uno/Ludo, picks **Bluff**, chooses **1** or **2** decks, then **Start game**.
 2. One or two 52-card decks (no jokers) are shuffled on the server and dealt as evenly as possible.
-3. On your turn, select 1–4 cards and declare a rank (Ace through King). The cards go face-down on the pile. Declared rank does not have to match the cards. The first play on an empty pile may declare any rank; while any cards remain in the upper pile, that rank is locked for **every** player (including the starter on later turns). Rank choice unlocks only after someone calls bluff and the pile is taken.
+3. On your turn, select any number of cards from your hand (at least one) and declare a rank (Ace through King). The cards go face-down on the pile. Declared rank does not have to match the cards. The first play on an empty pile may declare any rank; while any cards remain in the upper pile, that rank is locked for **every** player (including the starter on later turns). Rank choice unlocks only after someone calls bluff and the pile is taken.
 4. The next player may **Call bluff!** on that play, or play their own cards (which accepts the previous claim and keeps the locked rank).
 5. On **Call bluff!**, the challenger picks **one** face-down card from that play to inspect. Only that card is revealed. If it mismatches the claim, the bluffer takes the whole pile; if it matches, the challenger takes it. Turn continues with the seat after whoever collected.
-6. Emptying your hand does not win immediately — the next player can still challenge that final play. If they play instead (or time out), you win.
+6. Emptying your hand does not finish you immediately — the next player can still challenge that final play. If they play, pass, or time out instead (or challenge and are wrong), you are **out**. Play continues with the remaining players until only one person still has cards; that last player **loses**.
 
 Private hands stay on the server. Opponents only see card counts and public claims.
 
@@ -53,7 +53,7 @@ Then **Reload Window** on the joiner’s Cursor. Lobby title should show `v0.0.1
    - Uno and Bluff start with two to six players. Ludo starts with two to four. The host shares the join URL either way.
    - On your turn in Uno, click a legal card to select it and click again to play it. Wilds ask for a color.
    - On your turn in Ludo, press **Roll**, then click a highlighted token when more than one can move.
-   - On your turn in Bluff, select up to four cards, choose a declared rank (rank buttons lock for everyone after the first claim until a challenge), and press **Play cards**, press **Pass** to skip to the next player, or press **Call bluff!** and pick one face-down card from the last play to check. Bluff has no turn timer.
+   - On your turn in Bluff, select any number of cards from your hand, choose a declared rank (rank buttons lock for everyone after the first claim until a challenge), and press **Play cards**, press **Pass** to skip to the next player, or press **Call bluff!** and pick one face-down card from the last play to check. Bluff has no turn timer.
    - **Draw** (Uno) takes one card from the draw pile (the discard is reshuffled in when the pile runs out) and passes the turn. If nothing is left to draw, the turn passes.
 
 ## Develop

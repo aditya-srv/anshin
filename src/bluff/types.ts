@@ -78,11 +78,21 @@ export interface BluffSession {
    * seat until a challenge clears the pile.
    */
   claimedRank: BluffRank | null;
-  /** Player who emptied their hand; win is delayed until the next seat plays or times out. */
+  /**
+   * Player who emptied their hand; they are only marked out after the next seat
+   * plays, passes, times out, or fails a challenge on that play.
+   */
   pendingWinPlayerId: string | null;
   lastChallenge: BluffChallengeResult | null;
   currentPlayerIndex: number;
+  /**
+   * Set when the match ends. For a card-elimination finish this is the player
+   * who most recently went out (used by the room's winner announcement).
+   * For a forfeit (everyone else left) this is the remaining player.
+   */
   winnerId: string | null;
+  /** Last player still holding cards when the match ends by elimination. */
+  loserId: string | null;
   status: string;
   random: () => number;
 }
@@ -119,6 +129,7 @@ export interface BluffPublicState {
   yourPlayerId: string;
   status: string;
   winnerId: string | null;
+  loserId: string | null;
   playerCount: number;
   turnDeadline: number | null;
 }

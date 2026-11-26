@@ -228,8 +228,9 @@ export function callChallenge(
         next.status = `${message} ${pending.name} is out. ${loserName(next)} loses!`;
         return { ok: true, session: next };
       }
-      const collectorIndex = next.players.findIndex((player) => player.id === collector.id);
-      next.currentPlayerIndex = (collectorIndex + 1) % next.players.length;
+      // The accused would normally get the turn, but they are out, so the turn
+      // moves on to the next seat still holding cards.
+      next.currentPlayerIndex = next.players.findIndex((player) => player.id === accused.id);
       skipFinishedSeats(next);
       next.status = `${message} ${pending.name} is out. ${current(next).name}'s turn.`;
       return { ok: true, session: next };
@@ -237,8 +238,10 @@ export function callChallenge(
     next.pendingWinPlayerId = null;
   }
 
-  const collectorIndex = next.players.findIndex((player) => player.id === collector.id);
-  next.currentPlayerIndex = (collectorIndex + 1) % next.players.length;
+  // The collector is skipped: the turn goes to the other side of the challenge
+  // (the challenger if the bluff was caught, otherwise the accused).
+  const turnPlayer = wasBluff ? challenger : accused;
+  next.currentPlayerIndex = next.players.findIndex((player) => player.id === turnPlayer.id);
   skipFinishedSeats(next);
   next.status = `${message} ${current(next).name}'s turn.`;
   return { ok: true, session: next };

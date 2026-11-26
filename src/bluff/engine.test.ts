@@ -298,7 +298,7 @@ describe('bluff play and challenge', () => {
     assert.strictEqual(challenged.session.discardPile.length, 0);
     assert.strictEqual(challenged.session.claimedRank, null);
     assert.strictEqual(challenged.session.players[0].hand.length, 3); // leftover 2 + King + Queen
-    assert.strictEqual(challenged.session.currentPlayerIndex, 1); // after collector Ada
+    assert.strictEqual(challenged.session.currentPlayerIndex, 1); // challenger Bea plays next
   });
 
   it('punishes a wrong challenge', () => {
@@ -323,7 +323,107 @@ describe('bluff play and challenge', () => {
     assert.match(challenged.session.lastChallenge?.message ?? '', /WRONG CHALLENGE/);
     assert.strictEqual(challenged.session.claimedRank, null);
     assert.strictEqual(challenged.session.players[1].hand.length, 3);
-    assert.strictEqual(challenged.session.currentPlayerIndex, 0); // after collector Bea
+    assert.strictEqual(challenged.session.currentPlayerIndex, 0); // accused Ada plays next
+  });
+
+  describe('turn after a challenge with 3+ players', () => {
+    // Seats: Ada(0) Bea(1) Cal(2) Deb(3). Bea plays one card as an Ace.
+    function setup(playedRank: BluffRank) {
+      const session = makeTestGame({
+        players: [
+          { id: 'p1', name: 'Ada', hand: [card('a1', '2'), card('a2', '3')] },
+          { id: 'p2', name: 'Bea', hand: [card('b1', playedRank), card('b2', '4')] },
+          { id: 'p3', name: 'Cal', hand: [card('c1', '5'), card('c2', '6')] },
+          { id: 'p4', name: 'Deb', hand: [card('d1', '7'), card('d2', '8')] },
+        ],
+        currentPlayerIndex: 1,
+      });
+      const played = playCards(session, 'p2', ['b1'], 'Ace');
+      assert.strictEqual(played.ok, true);
+      if (!played.ok) {
+        throw new Error('play failed');
+      }
+      return played.session;
+    }
+
+    function turnId(session: ReturnType<typeof setup>): string {
+      return session.players[session.currentPlayerIndex].id;
+    }
+
+    it('right challenge by the next seat: accused collects, challenger plays', () => {
+      const challenged = callChallenge(setup('King'), 'p3', 'b1');
+      assert.strictEqual(challenged.ok, true);
+      if (!challenged.ok) {
+        return;
+      }
+      assert.strictEqual(challenged.session.lastChallenge?.collectorId, 'p2');
+      assert.strictEqual(turnId(challenged.session), 'p3');
+    });
+
+    it('wrong challenge by the next seat: challenger collects, accused plays', () => {
+      const challenged = callChallenge(setup('Ace'), 'p3', 'b1');
+      assert.strictEqual(challenged.ok, true);
+      if (!challenged.ok) {
+        return;
+      }
+      assert.strictEqual(challenged.session.lastChallenge?.collectorId, 'p3');
+      assert.strictEqual(turnId(challenged.session), 'p2');
+    });
+
+    it('right challenge after a pass: accused collects, challenger (not the passer) plays', () => {
+      const passed = passTurn(setup('King'), 'p3');
+      assert.strictEqual(passed.ok, true);
+      if (!passed.ok) {
+        return;
+      }
+      const challenged = callChallenge(passed.session, 'p4', 'b1');
+      assert.strictEqual(challenged.ok, true);
+      if (!challenged.ok) {
+        return;
+      }
+      assert.strictEqual(challenged.session.lastChallenge?.collectorId, 'p2');
+      assert.strictEqual(turnId(challenged.session), 'p4');
+    });
+
+    it('wrong challenge after a pass: challenger collects, accused plays', () => {
+      const passed = passTurn(setup('Ace'), 'p3');
+      assert.strictEqual(passed.ok, true);
+      if (!passed.ok) {
+        return;
+      }
+      const challenged = callChallenge(passed.session, 'p4', 'b1');
+      assert.strictEqual(challenged.ok, true);
+      if (!challenged.ok) {
+        return;
+      }
+      assert.strictEqual(challenged.session.lastChallenge?.collectorId, 'p4');
+      assert.strictEqual(turnId(challenged.session), 'p2');
+    });
+
+    it('wrong challenge on an emptying play: accused is out, turn moves to the next active seat', () => {
+      const session = makeTestGame({
+        players: [
+          { id: 'p1', name: 'Ada', hand: [card('a1', '2')] },
+          { id: 'p2', name: 'Bea', hand: [card('b1', 'Ace')] },
+          { id: 'p3', name: 'Cal', hand: [card('c1', '5')] },
+          { id: 'p4', name: 'Deb', hand: [card('d1', '7')] },
+        ],
+        currentPlayerIndex: 1,
+      });
+      const played = playCards(session, 'p2', ['b1'], 'Ace');
+      assert.strictEqual(played.ok, true);
+      if (!played.ok) {
+        return;
+      }
+      const challenged = callChallenge(played.session, 'p3', 'b1');
+      assert.strictEqual(challenged.ok, true);
+      if (!challenged.ok) {
+        return;
+      }
+      assert.strictEqual(challenged.session.winnerId, null);
+      assert.strictEqual(challenged.session.players[1].hand.length, 0);
+      assert.strictEqual(turnId(challenged.session), 'p3');
+    });
   });
 
   it('judges only the selected card when a mixed play is challenged', () => {

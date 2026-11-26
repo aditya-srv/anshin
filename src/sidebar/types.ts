@@ -35,6 +35,9 @@ export type IncomingMessage =
       guaranteeSpecial?: boolean;
       cardsPerPlayer?: number;
       deckCount?: number;
+      stackDraws?: boolean;
+      blockades?: boolean;
+      claimMode?: 'same' | 'next';
     }
   | { type: 'leave' }
   | { type: 'action'; action: GameAction }

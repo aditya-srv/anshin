@@ -138,6 +138,9 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
           guaranteeSpecial: message.guaranteeSpecial !== false,
           cardsPerPlayer: cards,
           deckCount,
+          stackDraws: message.stackDraws === true,
+          blockades: message.blockades === true,
+          claimMode: message.claimMode === 'next' ? 'next' : 'same',
         });
         break;
       }

@@ -43,6 +43,9 @@ export interface PlayerSeat {
   hand: UnoCard[];
 }
 
+/** Draw penalty that can be stacked when the house rule is on. */
+export type PendingDrawKind = 'draw2' | 'wild4';
+
 export interface GameSnapshot {
   players: PlayerSeat[];
   drawPile: UnoCard[];
@@ -56,6 +59,12 @@ export interface GameSnapshot {
   status: string;
   /** True after an opening wild until the starting player picks a color. */
   awaitingWildColor: boolean;
+  /** Host option: Draw Two / Wild Draw Four may be stacked instead of paid immediately. */
+  stackDraws: boolean;
+  /** Cards the current seat must draw unless they stack another matching draw card. */
+  pendingDraw: number;
+  /** Kind of draw card that opened or last stacked the pending penalty. */
+  pendingDrawKind: PendingDrawKind | null;
   /** Player who just played down to one card and has not called UNO. */
   unoPendingPlayerId: string | null;
   /** Epoch ms when the UNO call opened; catch is blocked briefly after this. */
@@ -89,6 +98,8 @@ export interface PersonalizedState {
   winnerId: string | null;
   playerCount: number;
   awaitingWildColor: boolean;
+  /** Cards waiting to be drawn unless the current seat stacks. 0 when none. */
+  pendingDraw: number;
   unoCall: UnoCall | null;
   unoSaid: UnoSaid | null;
   /** Epoch ms when Catch becomes available; null when no call is open. */

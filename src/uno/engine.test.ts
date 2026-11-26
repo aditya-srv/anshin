@@ -4,6 +4,7 @@ import { createDeck, isSpecial, isWild, shuffle } from './deck';
 import {
   callUno,
   canPlay,
+  canPlayCard,
   catchUno,
   chooseOpeningColor,
   createGame,
@@ -781,5 +782,141 @@ describe('uno call', () => {
     const next = mustPlay(game, 'a', 'h1');
     assert.strictEqual(next.winnerId, null);
     assert.strictEqual(next.unoPendingPlayerId, null);
+  });
+});
+
+describe('stack draws', () => {
+  it('leaves a pending draw2 for the next seat when stacking is on', () => {
+    const game = makeTestGame({
+      stackDraws: true,
+      players: [
+        {
+          id: 'a',
+          name: 'A',
+          hand: [
+            { id: 'h1', color: 'red', value: 'draw2' },
+            { id: 'keep', color: 'blue', value: '1' },
+          ],
+        },
+        { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'blue', value: '3' }] },
+        { id: 'c', name: 'C', hand: [{ id: 'h3', color: 'green', value: '4' }] },
+      ],
+      currentPlayerIndex: 0,
+      currentColor: 'red',
+      discardPile: [{ id: 'd0', color: 'red', value: '5' }],
+      drawPile: [
+        { id: 'p0', color: 'yellow', value: '1' },
+        { id: 'p1', color: 'yellow', value: '2' },
+      ],
+    });
+    const next = mustPlay(game, 'a', 'h1');
+    assert.strictEqual(next.pendingDraw, 2);
+    assert.strictEqual(next.pendingDrawKind, 'draw2');
+    assert.strictEqual(next.players[1].hand.length, 1);
+    assert.strictEqual(next.currentPlayerIndex, 1);
+  });
+
+  it('lets the next seat stack another draw2', () => {
+    const game = makeTestGame({
+      stackDraws: true,
+      pendingDraw: 2,
+      pendingDrawKind: 'draw2',
+      players: [
+        {
+          id: 'a',
+          name: 'A',
+          hand: [
+            { id: 'h1', color: 'blue', value: 'draw2' },
+            { id: 'keep', color: 'blue', value: '1' },
+          ],
+        },
+        { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'green', value: '3' }] },
+      ],
+      currentPlayerIndex: 0,
+      currentColor: 'red',
+      discardPile: [{ id: 'd0', color: 'red', value: 'draw2' }],
+      drawPile: [
+        { id: 'p0', color: 'yellow', value: '1' },
+        { id: 'p1', color: 'yellow', value: '2' },
+        { id: 'p2', color: 'yellow', value: '3' },
+        { id: 'p3', color: 'yellow', value: '4' },
+      ],
+    });
+    assert.ok(
+      canPlayCard(
+        { id: 'h1', color: 'blue', value: 'draw2' },
+        game.discardPile[0],
+        'red',
+        2,
+        'draw2'
+      )
+    );
+    assert.ok(
+      !canPlayCard(
+        { id: 'keep', color: 'blue', value: '1' },
+        game.discardPile[0],
+        'red',
+        2,
+        'draw2'
+      )
+    );
+    const next = mustPlay(game, 'a', 'h1');
+    assert.strictEqual(next.pendingDraw, 4);
+    assert.strictEqual(next.pendingDrawKind, 'draw2');
+    assert.strictEqual(next.currentPlayerIndex, 1);
+  });
+
+  it('draws the full pending stack when the seat draws', () => {
+    const game = makeTestGame({
+      stackDraws: true,
+      pendingDraw: 4,
+      pendingDrawKind: 'draw2',
+      players: [
+        { id: 'a', name: 'A', hand: [{ id: 'h1', color: 'blue', value: '1' }] },
+        { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'green', value: '3' }] },
+      ],
+      currentPlayerIndex: 0,
+      currentColor: 'red',
+      discardPile: [{ id: 'd0', color: 'red', value: 'draw2' }],
+      drawPile: [
+        { id: 'p0', color: 'yellow', value: '1' },
+        { id: 'p1', color: 'yellow', value: '2' },
+        { id: 'p2', color: 'yellow', value: '3' },
+        { id: 'p3', color: 'yellow', value: '4' },
+      ],
+    });
+    const result = drawCard(game, 'a');
+    assert.ok(result.ok);
+    if (!result.ok) {
+      return;
+    }
+    assert.strictEqual(result.game.players[0].hand.length, 5);
+    assert.strictEqual(result.game.pendingDraw, 0);
+    assert.strictEqual(result.game.pendingDrawKind, null);
+    assert.strictEqual(result.game.currentPlayerIndex, 1);
+  });
+
+  it('rejects stacking a wild4 onto a draw2 penalty', () => {
+    const game = makeTestGame({
+      stackDraws: true,
+      pendingDraw: 2,
+      pendingDrawKind: 'draw2',
+      players: [
+        {
+          id: 'a',
+          name: 'A',
+          hand: [
+            { id: 'h1', color: null, value: 'wild4' },
+            { id: 'keep', color: 'blue', value: '1' },
+          ],
+        },
+        { id: 'b', name: 'B', hand: [{ id: 'h2', color: 'green', value: '3' }] },
+      ],
+      currentPlayerIndex: 0,
+      currentColor: 'red',
+      discardPile: [{ id: 'd0', color: 'red', value: 'draw2' }],
+    });
+    const result = playCard(game, 'a', 'h1', 'blue');
+    assert.ok(!result.ok);
   });
 });

@@ -69,13 +69,19 @@ export interface BluffChallengeResult {
   message: string;
 }
 
+/** How the next seat must declare while the pile still has cards. */
+export type BluffClaimMode = 'same' | 'next';
+
 export interface BluffSession {
   players: BluffPlayer[];
   discardPile: BluffCard[];
   lastPlay: BluffLastPlay | null;
+  /** Host option: same rank for the pile, or ascending next rank each play. */
+  claimMode: BluffClaimMode;
   /**
-   * Rank locked for the current pile. Set on the first claim and kept for every
-   * seat until a challenge clears the pile.
+   * Rank the current seat must declare while the pile still has cards.
+   * Same mode: last declared rank. Next mode: rank after the last play.
+   * Cleared when a challenge empties the pile.
    */
   claimedRank: BluffRank | null;
   /**
@@ -121,8 +127,9 @@ export interface BluffPublicState {
   hand: BluffCard[];
   discardCount: number;
   lastPlay: BluffLastPlayView | null;
-  /** Rank every seat must declare until a challenge clears the pile. */
+  /** Rank the current seat must declare until a challenge clears the pile. */
   claimedRank: BluffRank | null;
+  claimMode: BluffClaimMode;
   lastChallenge: BluffChallengeResult | null;
   canChallenge: boolean;
   currentPlayerId: string;

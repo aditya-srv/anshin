@@ -3,12 +3,22 @@ import {
   BLUFF_RANKS,
   BluffCard,
   BluffChallengeResult,
+  BluffClaimMode,
   BluffLastPlay,
   BluffPlayer,
   BluffPublicState,
   BluffRank,
   BluffSession,
 } from './types';
+
+export function nextBluffRank(rank: BluffRank): BluffRank {
+  const index = BLUFF_RANKS.indexOf(rank);
+  return BLUFF_RANKS[(index + 1) % BLUFF_RANKS.length];
+}
+
+function requiredRankAfterPlay(mode: BluffClaimMode, declared: BluffRank): BluffRank {
+  return mode === 'next' ? nextBluffRank(declared) : declared;
+}
 
 export type BluffResult =
   | { ok: true; session: BluffSession }
@@ -21,7 +31,8 @@ export function isBluffRank(value: unknown): value is BluffRank {
 export function createGame(
   players: { id: string; name: string }[],
   random: () => number = Math.random,
-  deckCount: number = MIN_BLUFF_DECKS
+  deckCount: number = MIN_BLUFF_DECKS,
+  claimMode: BluffClaimMode = 'same'
 ): BluffSession {
   if (players.length < 2 || players.length > 6) {
     throw new Error('Bluff requires 2 to 6 players');
@@ -32,6 +43,9 @@ export function createGame(
     deckCount > MAX_BLUFF_DECKS
   ) {
     throw new Error(`Bluff supports ${MIN_BLUFF_DECKS} or ${MAX_BLUFF_DECKS} decks.`);
+  }
+  if (claimMode !== 'same' && claimMode !== 'next') {
+    throw new Error('Bluff claim mode must be same or next.');
   }
 
   const deck = shuffle(createDeck(deckCount), random);
@@ -61,6 +75,7 @@ export function createGame(
     players: seats,
     discardPile: [],
     lastPlay: null,
+    claimMode,
     claimedRank: null,
     pendingWinPlayerId: null,
     lastChallenge: null,
@@ -108,11 +123,14 @@ export function playCards(
     }
   }
 
-  // While cards remain in the pile, every seat must keep the same declared rank.
-  // The lock clears only when a challenge empties the pile.
+  // While cards remain in the pile, the next seat must declare the locked rank
+  // (same as last, or the next rank — depending on claimMode).
   const lockedRank =
     next.discardPile.length > 0
-      ? (next.claimedRank ?? next.lastPlay?.declaredRank ?? null)
+      ? (next.claimedRank ??
+        (next.lastPlay
+          ? requiredRankAfterPlay(next.claimMode, next.lastPlay.declaredRank)
+          : null))
       : null;
   if (lockedRank && declaredRank !== lockedRank) {
     return { ok: false, reason: `Must declare ${lockedRank}.` };
@@ -137,7 +155,7 @@ export function playCards(
     quantity: selected.length,
     cards: selected.map((card) => ({ ...card })),
   };
-  next.claimedRank = declaredRank;
+  next.claimedRank = requiredRankAfterPlay(next.claimMode, declaredRank);
   next.lastChallenge = null;
   next.pendingWinPlayerId = actor.hand.length === 0 ? actor.id : null;
 
@@ -294,8 +312,12 @@ export function personalize(
     // Expose a lock only while the face-down pile still has cards.
     claimedRank:
       session.discardPile.length > 0
-        ? (session.claimedRank ?? session.lastPlay?.declaredRank ?? null)
+        ? (session.claimedRank ??
+          (session.lastPlay
+            ? requiredRankAfterPlay(session.claimMode, session.lastPlay.declaredRank)
+            : null))
         : null,
+    claimMode: session.claimMode,
     lastChallenge: session.lastChallenge
       ? {
           ...session.lastChallenge,
@@ -419,6 +441,7 @@ export function makeTestGame(partial: Partial<BluffSession> & { players: BluffPl
   return {
     discardPile: [],
     lastPlay: null,
+    claimMode: 'same',
     claimedRank: null,
     pendingWinPlayerId: null,
     lastChallenge: null,
@@ -569,6 +592,7 @@ function clone(session: BluffSession): BluffSession {
           cards: session.lastPlay.cards.map((card) => ({ ...card })),
         }
       : null,
+    claimMode: session.claimMode,
     claimedRank: session.claimedRank,
     pendingWinPlayerId: session.pendingWinPlayerId,
     lastChallenge: session.lastChallenge

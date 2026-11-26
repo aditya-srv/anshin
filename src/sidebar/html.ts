@@ -6,7 +6,7 @@ import { boardPayload } from '../ludo/board';
  * Bust webview script/style caches when media/protocol changes.
  * Bump MEDIA_REV when shipping fixes under the same package version (e.g. 0.0.12).
  */
-const MEDIA_REV = '13b';
+const MEDIA_REV = '14a';
 
 function mediaUri(
   webview: vscode.Webview,
@@ -234,6 +234,8 @@ function hostOptionsHtml(): string {
       let body = '';
       if (game.id === 'uno') {
         body = unoSettingsHtml();
+      } else if (game.id === 'ludo') {
+        body = ludoSettingsHtml();
       } else if (game.id === 'bluff') {
         body = bluffSettingsHtml();
       }
@@ -260,6 +262,22 @@ function unoSettingsHtml(): string {
           <input id="guaranteeSpecialInput" type="checkbox" checked />
           1 special card each
         </span>
+      </label>
+      <label class="field">
+        <span class="check-row">
+          <input id="stackDrawsInput" type="checkbox" />
+          Stack draws
+        </span>
+      </label>`;
+}
+
+function ludoSettingsHtml(): string {
+  return `<p class="game-blurb">Race four tokens home. · 2–4 players</p>
+      <label class="field">
+        <span class="check-row">
+          <input id="blockadesInput" type="checkbox" />
+          Blockades
+        </span>
       </label>`;
 }
 
@@ -270,6 +288,13 @@ function bluffSettingsHtml(): string {
         <select id="bluffDeckCountSelect">
           <option value="1" selected>1</option>
           <option value="2">2</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Claim</span>
+        <select id="bluffClaimModeSelect">
+          <option value="same" selected>Same rank</option>
+          <option value="next">Next rank</option>
         </select>
       </label>`;
 }

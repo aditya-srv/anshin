@@ -7,6 +7,7 @@ import {
   dropPlayer,
   forcePassTurn,
   makeTestGame,
+  nextBluffRank,
   passTurn,
   personalize,
   playCards,
@@ -771,5 +772,74 @@ describe('bluff drop and module', () => {
 
     const fallback = bluffModule.create(PLAYERS, fixed([0.2]), { deckCount: 9 });
     assert.strictEqual(fallback.players.reduce((sum, seat) => sum + seat.hand.length, 0), 52);
+  });
+
+  it('honors claimMode next from create options', () => {
+    const same = bluffModule.create(PLAYERS, fixed([0.2]), {});
+    assert.strictEqual(same.claimMode, 'same');
+    const next = bluffModule.create(PLAYERS, fixed([0.2]), { claimMode: 'next' });
+    assert.strictEqual(next.claimMode, 'next');
+  });
+});
+
+describe('bluff next-rank claims', () => {
+  it('wraps King to Ace', () => {
+    assert.strictEqual(nextBluffRank('King'), 'Ace');
+    assert.strictEqual(nextBluffRank('Ace'), '2');
+  });
+
+  it('requires the next rank after each play until a challenge', () => {
+    const session = makeTestGame({
+      claimMode: 'next',
+      players: [
+        { id: 'p1', name: 'Ada', hand: [card('c1', '2'), card('c2', '3')] },
+        { id: 'p2', name: 'Bea', hand: [card('c3', '4'), card('c4', '5')] },
+      ],
+    });
+    const first = playCards(session, 'p1', ['c1'], 'Ace');
+    assert.strictEqual(first.ok, true);
+    if (!first.ok) {
+      return;
+    }
+    assert.strictEqual(first.session.claimedRank, '2');
+    assert.strictEqual(personalize(first.session, 'p2').claimedRank, '2');
+    assert.strictEqual(personalize(first.session, 'p2').claimMode, 'next');
+
+    const wrong = playCards(first.session, 'p2', ['c3'], 'Ace');
+    assert.strictEqual(wrong.ok, false);
+    if (!wrong.ok) {
+      assert.match(wrong.reason, /Must declare 2/);
+    }
+
+    const nextRank = playCards(first.session, 'p2', ['c3'], '2');
+    assert.strictEqual(nextRank.ok, true);
+    if (!nextRank.ok) {
+      return;
+    }
+    assert.strictEqual(nextRank.session.lastPlay?.declaredRank, '2');
+    assert.strictEqual(nextRank.session.claimedRank, '3');
+  });
+
+  it('clears the next-rank lock after a challenge', () => {
+    let session = makeTestGame({
+      claimMode: 'next',
+      players: [
+        { id: 'p1', name: 'Ada', hand: [card('c1', 'King'), card('c2', '2')] },
+        { id: 'p2', name: 'Bea', hand: [card('c3', 'Ace')] },
+      ],
+    });
+    const played = playCards(session, 'p1', ['c1'], 'Ace');
+    assert.strictEqual(played.ok, true);
+    if (!played.ok) {
+      return;
+    }
+    assert.strictEqual(played.session.claimedRank, '2');
+    const challenged = callChallenge(played.session, 'p2', 'c1');
+    assert.strictEqual(challenged.ok, true);
+    if (!challenged.ok) {
+      return;
+    }
+    assert.strictEqual(challenged.session.claimedRank, null);
+    assert.strictEqual(challenged.session.discardPile.length, 0);
   });
 });

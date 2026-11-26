@@ -10,7 +10,8 @@ export type LudoResult =
 
 export function createGame(
   players: { id: string; name: string }[],
-  random: () => number = Math.random
+  random: () => number = Math.random,
+  blockades = false
 ): LudoSession {
   if (players.length < 2 || players.length > 4) {
     throw new Error('Ludo requires 2 to 4 players');
@@ -41,6 +42,7 @@ export function createGame(
     legalTokenIds: [],
     winnerId: null,
     status: `${seated[0].name}'s turn. Roll the dice.`,
+    blockades,
     random,
   };
 }
@@ -306,6 +308,7 @@ function capture(session: LudoSession, moved: LudoToken): boolean {
       token.progress <= LAST_TRACK &&
       trackIndexFor(token.color, token.progress) === landed
   );
+  // A blockade (2+) cannot be captured even when the house rule is off; capture needs exactly one.
   if (opponents.length === 1) {
     opponents[0].progress = -1;
     return true;
@@ -316,18 +319,104 @@ function capture(session: LudoSession, moved: LudoToken): boolean {
 function legalTokenIds(session: LudoSession, dice: number): string[] {
   const player = current(session);
   return session.tokens
-    .filter((token) => token.playerId === player.id && canMove(token, dice))
+    .filter((token) => token.playerId === player.id && canMove(session, token, dice))
     .map((token) => token.id);
 }
 
-function canMove(token: LudoToken, dice: number): boolean {
+function canMove(session: LudoSession, token: LudoToken, dice: number): boolean {
   if (token.progress === DONE) {
     return false;
   }
   if (token.progress < 0) {
-    return dice === 6;
+    if (dice !== 6) {
+      return false;
+    }
+    // Enter start square (progress 0); treat prior as -1 so that cell is checked.
+    return !pathBlocked(session, token, -1, 0);
   }
-  return token.progress + dice <= DONE;
+  const dest = token.progress + dice;
+  if (dest > DONE) {
+    return false;
+  }
+  return !pathBlocked(session, token, token.progress, dest);
+}
+
+/**
+ * True when an opponent blockade sits on any track square this move would enter
+ * (from the square after `fromProgress` through `toProgress`, track only).
+ */
+function pathBlocked(
+  session: LudoSession,
+  mover: LudoToken,
+  fromProgress: number,
+  toProgress: number
+): boolean {
+  if (!session.blockades) {
+    return false;
+  }
+  for (let progress = fromProgress + 1; progress <= toProgress; progress++) {
+    if (progress < 0 || progress > LAST_TRACK) {
+      continue;
+    }
+    const trackIndex = trackIndexFor(mover.color, progress);
+    if (opponentBlockadeAt(session, trackIndex, mover.playerId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function opponentBlockadeAt(
+  session: LudoSession,
+  trackIndex: number,
+  moverPlayerId: string
+): boolean {
+  const counts = new Map<string, number>();
+  for (const token of session.tokens) {
+    if (token.progress < 0 || token.progress > LAST_TRACK) {
+      continue;
+    }
+    if (trackIndexFor(token.color, token.progress) !== trackIndex) {
+      continue;
+    }
+    counts.set(token.playerId, (counts.get(token.playerId) ?? 0) + 1);
+  }
+  for (const [playerId, count] of counts) {
+    if (playerId !== moverPlayerId && count >= 2) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Track indexes that currently hold a same-color stack of 2+. */
+export function blockedTrackIndexes(session: LudoSession): number[] {
+  if (!session.blockades) {
+    return [];
+  }
+  const byTrack = new Map<number, Map<string, number>>();
+  for (const token of session.tokens) {
+    if (token.progress < 0 || token.progress > LAST_TRACK) {
+      continue;
+    }
+    const trackIndex = trackIndexFor(token.color, token.progress);
+    let perPlayer = byTrack.get(trackIndex);
+    if (!perPlayer) {
+      perPlayer = new Map();
+      byTrack.set(trackIndex, perPlayer);
+    }
+    perPlayer.set(token.playerId, (perPlayer.get(token.playerId) ?? 0) + 1);
+  }
+  const blocked: number[] = [];
+  for (const [trackIndex, perPlayer] of byTrack) {
+    for (const count of perPlayer.values()) {
+      if (count >= 2) {
+        blocked.push(trackIndex);
+        break;
+      }
+    }
+  }
+  return blocked.sort((a, b) => a - b);
 }
 
 function current(session: LudoSession): LudoPlayer {

@@ -86,7 +86,7 @@
     return null;
   }
 
-  function paintRankButtons(enabled, lockedRank) {
+  function paintRankButtons(enabled, lockedRank, claimMode) {
     var root = ensureRankButtons();
     var lockEl = document.getElementById('bluffRankLock');
     if (!root) {
@@ -107,9 +107,11 @@
       if (lockEl) {
         lockEl.classList.remove('hidden');
         lockEl.textContent =
-          'Rank locked: ' +
-          lockedRank +
-          ' — call bluff to take the pile before changing rank';
+          claimMode === 'next'
+            ? 'Must claim ' + lockedRank + ' — next rank in sequence (or call bluff)'
+            : 'Rank locked: ' +
+              lockedRank +
+              ' — call bluff to take the pile before changing rank';
       }
       return;
     }
@@ -481,7 +483,7 @@
     }
     renderOpponents(game);
     renderPile(game);
-    paintRankButtons(myTurn, lockedRank);
+    paintRankButtons(myTurn, lockedRank, game.claimMode);
     renderHand(game, myTurn);
     renderReveal(game);
 

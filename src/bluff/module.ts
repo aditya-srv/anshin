@@ -83,7 +83,8 @@ export const bluffModule: GameModule<BluffSession, BluffPublicState> = {
   maxPlayers: 6,
   turnClock: false,
   create(players: GamePlayer[], random: () => number, options: GameOptions): BluffSession {
-    return createGame(players, random, deckCountOf(options));
+    const claimMode = options.claimMode === 'next' ? 'next' : 'same';
+    return createGame(players, random, deckCountOf(options), claimMode);
   },
   apply,
   onTimeout,

@@ -26,6 +26,9 @@
   const cardsPerPlayerInput = document.getElementById('cardsPerPlayerInput');
   const bluffDeckCountSelect = document.getElementById('bluffDeckCountSelect');
   const guaranteeSpecialInput = document.getElementById('guaranteeSpecialInput');
+  const stackDrawsInput = document.getElementById('stackDrawsInput');
+  const blockadesInput = document.getElementById('blockadesInput');
+  const bluffClaimModeSelect = document.getElementById('bluffClaimModeSelect');
   const ludoScreen = document.getElementById('ludoScreen');
   const bluffScreen = document.getElementById('bluffScreen');
   const leaveLobbyBtn = document.getElementById('leaveLobbyBtn');
@@ -148,6 +151,10 @@
     }
     var game = pendingGame || (gameSelect && gameSelect.value) || 'uno';
     pendingGame = game;
+    var claimMode = 'same';
+    if (bluffClaimModeSelect && bluffClaimModeSelect.value === 'next') {
+      claimMode = 'next';
+    }
     vscode.postMessage({ type: 'setGame', game: game });
     vscode.postMessage({
       type: 'startGame',
@@ -155,6 +162,9 @@
       guaranteeSpecial: !!(guaranteeSpecialInput && guaranteeSpecialInput.checked),
       cardsPerPlayer: cards,
       deckCount: deckCount,
+      stackDraws: !!(stackDrawsInput && stackDrawsInput.checked),
+      blockades: !!(blockadesInput && blockadesInput.checked),
+      claimMode: claimMode,
     });
   });
 
@@ -440,7 +450,7 @@
     }
     renderOpponents(game.opponents || [], ultra, game.currentPlayerId, game.winnerId);
     renderTurnLine(game, ultra, state.yourName);
-    renderDiscard(game.discard, ultra);
+    renderDiscard(game.discard, ultra, game.pendingDraw || 0);
     renderHand(game.hand, selectedId, ultra);
 
     const handCount = (game.hand || []).length;
@@ -453,9 +463,16 @@
     statusEl.textContent = localStatus || state.status || game.status || '';
 
     drawBtn.disabled = !myTurn || !!game.awaitingWildColor;
+    var pending = game.pendingDraw || 0;
     if (ultra) {
-      drawBtn.textContent =
-        game.drawRemaining === 0 ? 'Fetch (empty)' : 'Fetch (' + game.drawRemaining + ')';
+      if (pending > 0) {
+        drawBtn.textContent = 'Fetch +' + pending;
+      } else {
+        drawBtn.textContent =
+          game.drawRemaining === 0 ? 'Fetch (empty)' : 'Fetch (' + game.drawRemaining + ')';
+      }
+    } else if (pending > 0) {
+      drawBtn.textContent = 'Draw +' + pending;
     } else {
       drawBtn.textContent =
         game.drawRemaining === 0
@@ -688,12 +705,18 @@
     });
   }
 
-  function renderDiscard(card, ultra) {
+  function renderDiscard(card, ultra, pendingDraw) {
     discardEl.innerHTML = '';
     if (!card) {
       return;
     }
     discardEl.appendChild(createFaceCard(card, false, ultra));
+    if (pendingDraw > 0) {
+      var badge = document.createElement('div');
+      badge.className = 'pending-draw';
+      badge.textContent = ultra ? '+' + pendingDraw : '+' + pendingDraw + ' pending';
+      discardEl.appendChild(badge);
+    }
   }
 
   function renderHand(hand, selectedCardId, ultra) {

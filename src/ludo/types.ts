@@ -28,6 +28,8 @@ export interface LudoSession {
   legalTokenIds: string[];
   winnerId: string | null;
   status: string;
+  /** Host option: two or more tokens of one color block opponents on that square. */
+  blockades: boolean;
   random: () => number;
 }
 
@@ -57,6 +59,8 @@ export interface LudoPublicState {
   dice: number | null;
   consecutiveSixes: number;
   legalTokenIds: string[];
+  /** Track indexes with two or more tokens of the same color (blockades on). */
+  blockedTrackIndexes: number[];
   status: string;
   winnerId: string | null;
   turnDeadline: number | null;

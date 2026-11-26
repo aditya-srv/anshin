@@ -540,6 +540,16 @@
     };
   }
 
+  function paintBlockades(board, game) {
+    var blocked = {};
+    (game.blockedTrackIndexes || []).forEach(function (index) {
+      blocked[String(index)] = true;
+    });
+    board.querySelectorAll('.ludo-cell.track').forEach(function (cell) {
+      cell.classList.toggle('blockade', !!blocked[cell.dataset.track]);
+    });
+  }
+
   function render(game) {
     var board = ensureBoard();
     if (!board || !game) {
@@ -551,6 +561,7 @@
     legalIds.forEach(function (id) {
       legal[id] = true;
     });
+    paintBlockades(board, game);
 
     /* Move phase needs clickable tokens — cancel ghosts that would hide them. */
     if (game.awaiting === 'move' && legalIds.length) {

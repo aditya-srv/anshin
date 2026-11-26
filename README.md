@@ -42,10 +42,10 @@ The **host** often runs from F5 (workspace build). The **joiner** usually opens 
 
 ```bash
 npm run build
-cursor --install-extension .\anshin-0.0.13.vsix --force
+cursor --install-extension .\anshin-0.0.16.vsix --force
 ```
 
-Then **Reload Window** on the joiner’s Cursor. Lobby title should show `v0.0.13`. If the joiner still sees Uno wild cards / `Draw (undefined left)` during Bluff, they are on an old install.
+Then **Reload Window** on the joiner’s Cursor. Lobby title should show `v0.0.16`. If the joiner still sees Uno wild cards / `Draw (undefined left)` during Bluff, they are on an old install.
 5. Use the sidebar:
    - **Host room** or paste a `ws://…?t=…` join URL and **Join room**.
    - **Host room** has a Local / Remote toggle. Local binds a LAN server (the join URL includes a room token). Remote connects to a Server Join URL and does not bind a local port. **Anshin: Server Url** (`anshin.serverUrl`) only pre-fills that Remote field (details in `server.md`).
@@ -69,5 +69,5 @@ npm test          # compile + unit/integration tests (room, uno, ludo, bluff)
 ```bash
 npm run build          # compile + package anshin-<version>.vsix
 npm run update         # checkout latest version branch + install its .vsix
-npm run update -- v0.0.13
+npm run update -- v0.0.16
 ```

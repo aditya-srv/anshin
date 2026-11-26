@@ -2,6 +2,7 @@ import assert from 'assert';
 import { describe, it } from 'node:test';
 import { START_INDEX, TRACK_LENGTH, boardCells, isSafeTrack, trackIndexFor } from './board';
 import {
+  blockedTrackIndexes,
   createGame,
   dropPlayer,
   forcePassTurn,
@@ -167,6 +168,54 @@ describe('ludo rules', () => {
     }
     assert.strictEqual(token(joined.session, 'p1:0').progress, 1);
     assert.strictEqual(token(joined.session, 'p1:1').progress, 1);
+  });
+
+  it('blocks landing on and passing an opponent pair when blockades are on', () => {
+    let land = createGame(PLAYERS, fixed([1]), true);
+    land = placeToken(land, 'p1:0', 0);
+    land = placeToken(land, 'p2:0', progressOn('green', 1));
+    land = placeToken(land, 'p2:1', progressOn('green', 1));
+    const blockedLand = rollDice(land, 'p1', 1);
+    assert.strictEqual(blockedLand.ok, true);
+    if (!blockedLand.ok) {
+      return;
+    }
+    assert.strictEqual(token(blockedLand.session, 'p1:0').progress, 0);
+    assert.strictEqual(blockedLand.session.currentPlayerIndex, 1);
+    assert.deepStrictEqual(blockedTrackIndexes(land), [trackIndexFor('green', progressOn('green', 1))]);
+
+    let pass = createGame(PLAYERS, fixed([2]), true);
+    pass = placeToken(pass, 'p1:0', 0);
+    pass = placeToken(pass, 'p2:0', progressOn('green', 1));
+    pass = placeToken(pass, 'p2:1', progressOn('green', 1));
+    const blockedPass = rollDice(pass, 'p1', 2);
+    assert.strictEqual(blockedPass.ok, true);
+    if (!blockedPass.ok) {
+      return;
+    }
+    assert.strictEqual(token(blockedPass.session, 'p1:0').progress, 0);
+    assert.strictEqual(blockedPass.session.currentPlayerIndex, 1);
+  });
+
+  it('lets you pass and stack your own blockade', () => {
+    let session = createGame(PLAYERS, fixed([1]), true);
+    session = placeToken(session, 'p1:0', 0);
+    session = placeToken(session, 'p1:1', 1);
+    session = placeToken(session, 'p1:2', 56);
+    session = placeToken(session, 'p1:3', 56);
+    const rolled = rollDice(session, 'p1', 1);
+    assert.strictEqual(rolled.ok, true);
+    if (!rolled.ok) {
+      return;
+    }
+    const joined = moveToken(rolled.session, 'p1', 'p1:0');
+    assert.strictEqual(joined.ok, true);
+    if (!joined.ok) {
+      return;
+    }
+    assert.strictEqual(token(joined.session, 'p1:0').progress, 1);
+    assert.strictEqual(token(joined.session, 'p1:1').progress, 1);
+    assert.deepStrictEqual(blockedTrackIndexes(joined.session), [trackIndexFor('red', 1)]);
   });
 
   it('requires an exact roll to finish and grants another roll when a piece goes home', () => {

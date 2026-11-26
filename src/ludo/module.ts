@@ -2,10 +2,12 @@ import {
   ApplyResult,
   GameAction,
   GameModule,
+  GameOptions,
   GamePlayer,
   PersonalizeContext,
 } from '../games/types';
 import {
+  blockedTrackIndexes,
   createGame,
   diceFromRandom,
   dropPlayer,
@@ -44,8 +46,8 @@ export const ludoModule: GameModule<LudoSession, LudoPublicState> = {
   label: 'Ludo',
   minPlayers: 2,
   maxPlayers: 4,
-  create(players: GamePlayer[], random: () => number): LudoSession {
-    return createGame(players, random);
+  create(players: GamePlayer[], random: () => number, options: GameOptions): LudoSession {
+    return createGame(players, random, options.blockades === true);
   },
   apply(session: LudoSession, playerId: string, action: GameAction): ApplyResult<LudoSession> {
     if (action.type === 'roll') {
@@ -94,6 +96,7 @@ export const ludoModule: GameModule<LudoSession, LudoPublicState> = {
       dice: session.dice,
       consecutiveSixes: session.consecutiveSixes,
       legalTokenIds: showMoves ? session.legalTokenIds.slice() : [],
+      blockedTrackIndexes: blockedTrackIndexes(session),
       status: session.status,
       winnerId: session.winnerId,
       turnDeadline: context.turnDeadline,

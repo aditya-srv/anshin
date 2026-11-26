@@ -8,7 +8,7 @@ import {
 } from '../games/types';
 import {
   callUno,
-  canPlay,
+  canPlayCard,
   catchUno,
   chooseOpeningColor,
   createGame,
@@ -72,6 +72,7 @@ function onTimeout(session: GameSnapshot, playerId: string): GameSnapshot {
     }
     return { ...chosen.game, status: `${name} timed out. Color set to red.` };
   }
+  const penalty = session.pendingDraw > 0 ? session.pendingDraw : 1;
   const drawn = drawCard(session, playerId);
   if (!drawn.ok) {
     return forcePassTurn(session);
@@ -80,6 +81,12 @@ function onTimeout(session: GameSnapshot, playerId: string): GameSnapshot {
     return drawn.game;
   }
   const turnName = drawn.game.players[drawn.game.currentPlayerIndex]?.name ?? 'Next';
+  if (penalty > 1) {
+    return {
+      ...drawn.game,
+      status: `${name} timed out and draws ${penalty}. ${turnName}'s turn.`,
+    };
+  }
   return {
     ...drawn.game,
     status: `${name} timed out and drew a card. ${turnName}'s turn.`,
@@ -97,7 +104,8 @@ export const unoModule: GameModule<GameSnapshot, PersonalizedState> = {
       random,
       undefined,
       options.guaranteeSpecial !== false,
-      typeof options.cardsPerPlayer === 'number' ? options.cardsPerPlayer : 7
+      typeof options.cardsPerPlayer === 'number' ? options.cardsPerPlayer : 7,
+      options.stackDraws === true
     );
   },
   apply,
@@ -111,7 +119,15 @@ export const unoModule: GameModule<GameSnapshot, PersonalizedState> = {
       turnDeadline: context.turnDeadline,
       hand: state.hand.map((card) => ({
         ...card,
-        playable: myTurn && canPlay(card, state.discard, state.currentColor),
+        playable:
+          myTurn &&
+          canPlayCard(
+            card,
+            state.discard,
+            state.currentColor,
+            session.pendingDraw,
+            session.pendingDrawKind
+          ),
       })),
       opponents: state.opponents.map((opponent) => ({
         ...opponent,

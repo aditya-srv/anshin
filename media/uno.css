@@ -165,6 +165,14 @@ body {
   text-align: center;
 }
 
+.pending-draw {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--vscode-charts-orange, #e0a020);
+}
+
 .discard-section h2 {
   margin: 0 0 6px;
   font-size: 11px;

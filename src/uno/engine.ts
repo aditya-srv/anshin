@@ -2,6 +2,7 @@ import { createDeck, isSpecial, isWild, shuffle } from './deck';
 import {
   Direction,
   GameSnapshot,
+  PendingDrawKind,
   PersonalizedState,
   PlayerSeat,
   UnoCall,
@@ -33,13 +34,28 @@ export function canPlay(card: UnoCard, top: UnoCard, currentColor: UnoColor): bo
   return false;
 }
 
+/** Whether a card may be played given color match and an optional stacked draw penalty. */
+export function canPlayCard(
+  card: UnoCard,
+  top: UnoCard,
+  currentColor: UnoColor,
+  pendingDraw: number,
+  pendingDrawKind: PendingDrawKind | null
+): boolean {
+  if (pendingDraw > 0 && pendingDrawKind) {
+    return card.value === pendingDrawKind;
+  }
+  return canPlay(card, top, currentColor);
+}
+
 export function createGame(
   players: { id: string; name: string }[],
   random: () => number = Math.random,
   /** Pre-ordered draw pile (top = last item). Tests use this to force the opening card. */
   deck?: UnoCard[],
   guaranteeSpecial = true,
-  cardsPerPlayer = DEFAULT_CARDS_PER_PLAYER
+  cardsPerPlayer = DEFAULT_CARDS_PER_PLAYER,
+  stackDraws = false
 ): GameSnapshot {
   if (players.length < 2 || players.length > 6) {
     throw new Error('UNO requires 2 to 6 players');
@@ -111,6 +127,9 @@ export function createGame(
     winnerId: null,
     status: '',
     awaitingWildColor: false,
+    stackDraws,
+    pendingDraw: 0,
+    pendingDrawKind: null,
     unoPendingPlayerId: null,
     unoPendingAt: null,
     unoSaid: null,
@@ -148,6 +167,12 @@ function applyOpening(game: GameSnapshot, card: UnoCard): void {
   }
 
   if (card.value === 'draw2') {
+    if (game.stackDraws) {
+      game.pendingDraw = 2;
+      game.pendingDrawKind = 'draw2';
+      game.status = `Game started. ${game.players[0].name} faces +2. Stack or draw.`;
+      return;
+    }
     const drawn = takeFromDraw(game, 2);
     game.players[0].hand.push(...drawn);
     advanceTurn(game);
@@ -215,7 +240,7 @@ export function playCard(
 
   const card = player.hand[handIndex];
   const top = topDiscard(game);
-  if (!canPlay(card, top, game.currentColor)) {
+  if (!canPlayCard(card, top, game.currentColor, game.pendingDraw, game.pendingDrawKind)) {
     return { ok: false, reason: 'Illegal play.' };
   }
 
@@ -260,6 +285,8 @@ export function playCard(
   const label = formatCard(card);
   if (wentOut) {
     next.status = `${nextPlayer.name} is out! ${turnName}'s turn.`;
+  } else if (next.pendingDraw > 0) {
+    next.status = `${nextPlayer.name} played ${label}. ${turnName} faces +${next.pendingDraw}.`;
   } else {
     next.status = `${nextPlayer.name} played ${label}. ${turnName}'s turn.`;
   }
@@ -293,6 +320,10 @@ export function dropPlayer(game: GameSnapshot, playerId: string): GameSnapshot {
   }
   if (next.awaitingWildColor) {
     next.awaitingWildColor = false;
+  }
+  const wasCurrent = index === next.currentPlayerIndex;
+  if (wasCurrent && next.pendingDraw > 0) {
+    clearPendingDraw(next);
   }
   if (next.players.length === 0) {
     next.currentPlayerIndex = 0;
@@ -335,6 +366,9 @@ export function forcePassTurn(game: GameSnapshot): GameSnapshot {
   if (next.awaitingWildColor) {
     next.awaitingWildColor = false;
   }
+  if (next.pendingDraw > 0) {
+    applyPendingDraw(next, next.currentPlayerIndex);
+  }
   advanceTurn(next);
   ensureActiveCurrentPlayer(next);
   const active = next.players.filter((player) => player.hand.length > 0);
@@ -370,8 +404,12 @@ export function drawCard(game: GameSnapshot, playerId: string): ActionResult {
 
   const next = cloneGame(game);
   clearUnoSaid(next);
-  const drawn = takeFromDraw(next, 1);
   const actor = next.players[playerIndex].name;
+  const penalty = next.pendingDraw > 0 ? next.pendingDraw : 1;
+  const drawn = takeFromDraw(next, penalty);
+  if (next.pendingDraw > 0) {
+    clearPendingDraw(next);
+  }
   if (drawn.length === 0) {
     advanceTurn(next);
     const turnName = next.players[next.currentPlayerIndex].name;
@@ -380,10 +418,14 @@ export function drawCard(game: GameSnapshot, playerId: string): ActionResult {
     return { ok: true, game: next };
   }
 
-  next.players[playerIndex].hand.push(drawn[0]);
+  next.players[playerIndex].hand.push(...drawn);
   advanceTurn(next);
   const turnName = next.players[next.currentPlayerIndex].name;
-  next.status = `${actor} drew a card. ${turnName}'s turn.`;
+  if (penalty > 1) {
+    next.status = `${actor} draws ${drawn.length}. ${turnName}'s turn.`;
+  } else {
+    next.status = `${actor} drew a card. ${turnName}'s turn.`;
+  }
   releaseUnoIfHandChanged(next);
   return { ok: true, game: next };
 }
@@ -486,6 +528,7 @@ export function personalize(
     winnerId: game.winnerId,
     playerCount: game.players.length,
     awaitingWildColor: game.awaitingWildColor,
+    pendingDraw: game.pendingDraw,
     unoCall: unoCallView(game),
     unoSaid: game.unoSaid ? { ...game.unoSaid } : null,
     catchAvailableAt:
@@ -523,16 +566,26 @@ function applyActionEffects(
     }
     case 'draw2': {
       advanceTurn(game);
-      const victim = game.players[game.currentPlayerIndex];
-      victim.hand.push(...takeFromDraw(game, 2));
-      advanceTurn(game);
+      if (game.stackDraws) {
+        game.pendingDraw += 2;
+        game.pendingDrawKind = 'draw2';
+      } else {
+        const victim = game.players[game.currentPlayerIndex];
+        victim.hand.push(...takeFromDraw(game, 2));
+        advanceTurn(game);
+      }
       break;
     }
     case 'wild4': {
       advanceTurn(game);
-      const victim = game.players[game.currentPlayerIndex];
-      victim.hand.push(...takeFromDraw(game, 4));
-      advanceTurn(game);
+      if (game.stackDraws) {
+        game.pendingDraw += 4;
+        game.pendingDrawKind = 'wild4';
+      } else {
+        const victim = game.players[game.currentPlayerIndex];
+        victim.hand.push(...takeFromDraw(game, 4));
+        advanceTurn(game);
+      }
       break;
     }
     default: {
@@ -632,6 +685,20 @@ function topDiscard(game: GameSnapshot): UnoCard {
   return game.discardPile[game.discardPile.length - 1];
 }
 
+function applyPendingDraw(game: GameSnapshot, playerIndex: number): void {
+  if (game.pendingDraw <= 0) {
+    return;
+  }
+  const drawn = takeFromDraw(game, game.pendingDraw);
+  game.players[playerIndex].hand.push(...drawn);
+  clearPendingDraw(game);
+}
+
+function clearPendingDraw(game: GameSnapshot): void {
+  game.pendingDraw = 0;
+  game.pendingDrawKind = null;
+}
+
 function cloneGame(game: GameSnapshot): GameSnapshot {
   return {
     players: game.players.map((p) => ({
@@ -648,6 +715,9 @@ function cloneGame(game: GameSnapshot): GameSnapshot {
     winnerId: game.winnerId,
     status: game.status,
     awaitingWildColor: game.awaitingWildColor,
+    stackDraws: game.stackDraws,
+    pendingDraw: game.pendingDraw,
+    pendingDrawKind: game.pendingDrawKind,
     unoPendingPlayerId: game.unoPendingPlayerId,
     unoPendingAt: game.unoPendingAt,
     unoSaid: game.unoSaid ? { ...game.unoSaid } : null,
@@ -726,6 +796,9 @@ export function makeTestGame(partial: Partial<GameSnapshot> & { players: PlayerS
     winnerId: null,
     status: '',
     awaitingWildColor: false,
+    stackDraws: false,
+    pendingDraw: 0,
+    pendingDrawKind: null,
     unoPendingPlayerId: null,
     unoPendingAt: null,
     unoSaid: null as UnoSaid | null,

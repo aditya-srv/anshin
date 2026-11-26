@@ -1,11 +1,7 @@
 import * as vscode from 'vscode';
-import { DEFAULT_ROOM_PORT } from './room/lan';
-import { ServerMessage } from './room/protocol';
-import { isValidJoinUrl } from './room/urlAuth';
-import { buildSidebarHtml } from './sidebar/html';
-import { RoomSession } from './sidebar/session';
-import { applyServerMessage, createMenuState, toWebviewState } from './sidebar/state';
-import { GuiMode, IncomingMessage, UiState } from './sidebar/types';
+import { AnshinController } from './sidebar/controller';
+import { IncomingMessage } from './sidebar/types';
+import { buildWebviewHtml } from './sidebar/webviewHtml';
 
 export type { GuiMode } from './sidebar/types';
 
@@ -13,21 +9,21 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
   public static readonly viewType = 'anshin.unoView';
 
   private view?: vscode.WebviewView;
-  private state: UiState = createMenuState();
-  private busy = false;
-  private shutdownPromise: Promise<void> | null = null;
   private webviewDisposables: vscode.Disposable[] = [];
-  private readonly session: RoomSession;
+  private readonly controller: AnshinController;
 
   constructor(private readonly extensionUri: vscode.Uri) {
-    this.session = new RoomSession(
-      (msg) => this.onServerMessage(msg),
-      (reason) => this.resetToMenu(reason),
-      (status) => {
-        this.state = { ...this.state, status };
-        this.postUi();
-      }
-    );
+    this.controller = new AnshinController({
+      send: (message) => {
+        void this.view?.webview.postMessage(message);
+      },
+      version: readExtensionVersion(),
+      getDefaultServerUrl: () =>
+        vscode.workspace.getConfiguration('anshin').get<string>('serverUrl')?.trim() ?? '',
+      copyText: async (text) => {
+        await vscode.env.clipboard.writeText(text);
+      },
+    });
   }
 
   public resolveWebviewView(
@@ -45,42 +41,30 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
 
     this.webviewDisposables.push(
       webviewView.webview.onDidReceiveMessage((message: IncomingMessage) => {
-        void this.handleMessage(message);
+        void this.controller.handle(message);
       }),
       webviewView.onDidChangeVisibility(() => {
         if (webviewView.visible) {
-          this.postUi();
+          this.controller.refresh();
         }
       })
     );
 
-    this.setWebviewHtml(webviewView);
-    this.postUi();
-  }
-
-  private setWebviewHtml(webviewView: vscode.WebviewView): void {
-    let version = 'dev';
-    try {
-      // Compiled as out/anshinViewProvider.js → ../package.json is the extension root.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pkg = require('../package.json') as { version?: string };
-      version = String(pkg.version ?? 'dev');
-    } catch {
-      version = String(Date.now());
-    }
-    webviewView.webview.html = buildSidebarHtml(webviewView.webview, this.extensionUri, version);
+    webviewView.webview.html = buildWebviewHtml(
+      webviewView.webview,
+      this.extensionUri,
+      readExtensionVersion()
+    );
+    this.controller.refresh();
   }
 
   public shutdown(): Promise<void> {
-    if (!this.shutdownPromise) {
-      this.shutdownPromise = this.resetToMenu('Session closed.');
-    }
-    return this.shutdownPromise;
+    return this.controller.shutdown();
   }
 
   public dispose(): void {
     this.clearWebviewListeners();
-    void this.shutdown();
+    void this.controller.shutdown();
   }
 
   private clearWebviewListeners(): void {
@@ -89,269 +73,15 @@ export class AnshinViewProvider implements vscode.WebviewViewProvider, vscode.Di
     }
     this.webviewDisposables = [];
   }
+}
 
-  private async handleMessage(message: IncomingMessage): Promise<void> {
-    switch (message.type) {
-      case 'ready':
-        this.postUi();
-        break;
-      case 'setGuiMode':
-        if (message.mode === 'ultra' || message.mode === 'low' || message.mode === 'high') {
-          this.state = { ...this.state, guiMode: message.mode };
-          this.postUi();
-        }
-        break;
-      case 'host':
-        await this.hostRoom(message.name, {
-          remote: message.remote === true,
-          serverUrl: typeof message.serverUrl === 'string' ? message.serverUrl : '',
-        });
-        break;
-      case 'join':
-        await this.joinRoom(message.name, message.url);
-        break;
-      case 'setGame':
-        if (typeof message.game === 'string' && message.game) {
-          // Optimistic — remote lobby echoes can lag; keep the host pick from snapping back to Uno.
-          this.state = { ...this.state, selectedGame: message.game };
-          this.session.setGame(message.game);
-          this.postUi();
-        }
-        break;
-      case 'startGame': {
-        const cards =
-          typeof message.cardsPerPlayer === 'number' && Number.isInteger(message.cardsPerPlayer)
-            ? message.cardsPerPlayer
-            : 7;
-        const deckCount =
-          typeof message.deckCount === 'number' && Number.isInteger(message.deckCount)
-            ? message.deckCount
-            : 1;
-        const game =
-          typeof message.game === 'string' && message.game.trim() ? message.game.trim() : undefined;
-        if (game) {
-          this.state = { ...this.state, selectedGame: game };
-          this.session.setGame(game);
-        }
-        this.session.start({
-          ...(game ? { game } : {}),
-          guaranteeSpecial: message.guaranteeSpecial !== false,
-          cardsPerPlayer: cards,
-          deckCount,
-          stackDraws: message.stackDraws === true,
-          blockades: message.blockades === true,
-          claimMode: message.claimMode === 'next' ? 'next' : 'same',
-        });
-        break;
-      }
-      case 'action':
-        this.session.action(message.action);
-        break;
-      case 'leave':
-        this.session.leaveSocket();
-        await this.runExclusive(() => this.resetToMenu('Left the room.'));
-        break;
-      case 'copyJoinUrl':
-        await this.copyJoinUrl();
-        break;
-    }
-  }
-
-  private hostRoom(
-    name: string,
-    options: { remote: boolean; serverUrl: string }
-  ): Promise<void> {
-    return this.runExclusive(async () => {
-      const trimmed = name.trim().slice(0, 24);
-      if (!trimmed) {
-        this.state = { ...this.state, status: 'Enter a display name.' };
-        this.postUi();
-        return;
-      }
-
-      const configured =
-        vscode.workspace.getConfiguration('anshin').get<string>('serverUrl')?.trim() ?? '';
-      const remoteUrl = (options.serverUrl.trim() || configured).trim();
-
-      await this.session.teardown();
-      const gen = this.session.generationId;
-
-      if (options.remote) {
-        if (!isValidJoinUrl(remoteUrl)) {
-          this.state = createMenuState(
-            'Remote host needs a ws:// or wss:// Join URL with ?t= token',
-            this.state.guiMode
-          );
-          this.postUi();
-          return;
-        }
-
-        this.state = {
-          ...this.state,
-          yourName: trimmed,
-          youAreHost: true,
-          joinUrl: remoteUrl,
-          status: 'Connecting to room server…',
-        };
-        this.postUi();
-
-        try {
-          await this.session.connect(remoteUrl, trimmed);
-        } catch (err) {
-          if (!this.session.isCurrent(gen)) {
-            return;
-          }
-          const reason = err instanceof Error ? err.message : String(err);
-          await this.resetToMenu(`Host failed: ${reason}`);
-        }
-        return;
-      }
-
-      let server;
-      try {
-        server = await this.session.startLocalServer();
-      } catch (err) {
-        if (!this.session.isCurrent(gen)) {
-          return;
-        }
-        const reason = err instanceof Error ? err.message : String(err);
-        this.state = createMenuState(
-          `Could not bind port ${DEFAULT_ROOM_PORT}: ${reason}`,
-          this.state.guiMode
-        );
-        this.postUi();
-        return;
-      }
-
-      if (!this.session.isCurrent(gen)) {
-        await this.session.discardServer();
-        return;
-      }
-
-      this.state = {
-        ...this.state,
-        yourName: trimmed,
-        youAreHost: true,
-        joinUrl: server.getJoinUrl(),
-        status: 'Hosting… share the join URL.',
-      };
-      this.postUi();
-
-      try {
-        await this.session.connect(this.session.localClientUrl(server), trimmed);
-      } catch (err) {
-        if (!this.session.isCurrent(gen)) {
-          return;
-        }
-        const reason = err instanceof Error ? err.message : String(err);
-        await this.resetToMenu(`Host client failed: ${reason}`);
-      }
-    });
-  }
-
-  private joinRoom(name: string, url: string): Promise<void> {
-    return this.runExclusive(async () => {
-      const trimmed = name.trim().slice(0, 24);
-      const joinUrl = url.trim();
-      if (!trimmed) {
-        this.state = { ...this.state, status: 'Enter a display name.' };
-        this.postUi();
-        return;
-      }
-      if (!isValidJoinUrl(joinUrl)) {
-        this.state = {
-          ...this.state,
-          status: 'URL must be ws:// or wss:// with a host (include ?t= from the host)',
-        };
-        this.postUi();
-        return;
-      }
-
-      await this.session.teardown();
-      const gen = this.session.generationId;
-      this.state = {
-        ...this.state,
-        yourName: trimmed,
-        youAreHost: false,
-        joinUrl,
-        status: 'Connecting…',
-      };
-      this.postUi();
-
-      try {
-        await this.session.connect(joinUrl, trimmed);
-      } catch (err) {
-        if (!this.session.isCurrent(gen)) {
-          return;
-        }
-        const reason = err instanceof Error ? err.message : String(err);
-        await this.resetToMenu(`Join failed: ${reason}`);
-      }
-    });
-  }
-
-  private async copyJoinUrl(): Promise<void> {
-    const url = this.state.joinUrl;
-    if (!url) {
-      return;
-    }
-    await vscode.env.clipboard.writeText(url);
-    this.state = { ...this.state, status: 'Join URL copied.' };
-    this.postUi();
-  }
-
-  private onServerMessage(msg: ServerMessage): void {
-    const applied = applyServerMessage(this.state, msg);
-    if (msg.type === 'lobby' || msg.type === 'state' || msg.type === 'gameOver') {
-      this.session.noteResumeToken(applied.resumeToken);
-      this.session.markResumeSucceeded();
-    }
-    if (applied.ended) {
-      this.session.disableRetry();
-      return;
-    }
-    this.state = applied.state;
-    this.postUi();
-  }
-
-  private async resetToMenu(status?: string): Promise<void> {
-    const guiMode = this.state.guiMode;
-    await this.session.teardown();
-    this.state = createMenuState(status ?? this.state.status, guiMode);
-    this.postUi();
-  }
-
-  private async runExclusive(task: () => Promise<void>): Promise<void> {
-    if (this.busy) {
-      return;
-    }
-    this.busy = true;
-    try {
-      await task();
-    } finally {
-      this.busy = false;
-    }
-  }
-
-  private extensionVersion(): string {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pkg = require('../package.json') as { version?: string };
-      return String(pkg.version ?? 'dev');
-    } catch {
-      return 'dev';
-    }
-  }
-
-  private postUi(): void {
-    if (!this.view) {
-      return;
-    }
-    const defaultServerUrl =
-      vscode.workspace.getConfiguration('anshin').get<string>('serverUrl')?.trim() ?? '';
-    this.view.webview.postMessage({
-      type: 'ui',
-      state: toWebviewState(this.state, defaultServerUrl, this.extensionVersion()),
-    });
+function readExtensionVersion(): string {
+  try {
+    // Compiled as out/anshinViewProvider.js → ../package.json is the extension root.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pkg = require('../package.json') as { version?: string };
+    return String(pkg.version ?? 'dev');
+  } catch {
+    return String(Date.now());
   }
 }

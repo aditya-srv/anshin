@@ -1,51 +1,43 @@
-import * as vscode from 'vscode';
 import { listGames } from '../games/registry';
 import { boardPayload } from '../ludo/board';
 
-/**
- * Bust webview script/style caches when media/protocol changes.
- * Bump MEDIA_REV when shipping fixes under the same package version (e.g. 0.0.12).
- */
-const MEDIA_REV = '14a';
-
-function mediaUri(
-  webview: vscode.Webview,
-  extensionUri: vscode.Uri,
-  file: string,
-  version: string
-): vscode.Uri {
-  return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', file)).with({
-    query: `v=${encodeURIComponent(version)}-${MEDIA_REV}`,
-  });
+export interface SidebarHtmlOptions {
+  /** Maps a media file name (e.g. `uno.js`) to the URL the page should load it from. */
+  assetUrl: (file: string) => string;
+  /** Full Content-Security-Policy value. Empty means no policy meta tag. */
+  csp: string;
+  /** Script nonce. Empty for browser pages that rely on `script-src 'self'`. */
+  nonce: string;
+  /** Standalone join page: no host controls, and the page talks to the room directly. */
+  browser?: boolean;
 }
 
-export function buildSidebarHtml(
-  webview: vscode.Webview,
-  extensionUri: vscode.Uri,
-  version = '0'
-): string {
-  const styleUri = mediaUri(webview, extensionUri, 'uno.css', version);
-  const ludoStyleUri = mediaUri(webview, extensionUri, 'ludo.css', version);
-  const bluffStyleUri = mediaUri(webview, extensionUri, 'bluff.css', version);
-  const scriptUri = mediaUri(webview, extensionUri, 'uno.js', version);
-  const ludoScriptUri = mediaUri(webview, extensionUri, 'ludo.js', version);
-  const bluffScriptUri = mediaUri(webview, extensionUri, 'bluff.js', version);
-  const nonce = getNonce();
+/** Shared markup for the VS Code sidebar webview and the browser join page. */
+export function buildSidebarHtml(opts: SidebarHtmlOptions): string {
+  const browser = opts.browser === true;
+  const nonceAttr = opts.nonce ? ` nonce="${opts.nonce}"` : '';
+  const styleUri = opts.assetUrl('uno.css');
+  const ludoStyleUri = opts.assetUrl('ludo.css');
+  const bluffStyleUri = opts.assetUrl('bluff.css');
+  const scriptUri = opts.assetUrl('uno.js');
+  const ludoScriptUri = opts.assetUrl('ludo.js');
+  const bluffScriptUri = opts.assetUrl('bluff.js');
+  const clientUri = opts.assetUrl('browser-client.js');
   const boardJson = JSON.stringify(boardPayload()).replace(/</g, '\\u003c');
+  const hiddenInBrowser = browser ? ' hidden' : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+  ${opts.csp ? `<meta http-equiv="Content-Security-Policy" content="${opts.csp}" />` : ''}
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="${styleUri}" rel="stylesheet" />
   <link href="${ludoStyleUri}" rel="stylesheet" />
   <link href="${bluffStyleUri}" rel="stylesheet" />
   <title>Anshin</title>
 </head>
-<body class="gui-low">
+<body class="gui-low${browser ? ' browser-mode' : ''}">
   <header class="topbar">
     <div class="title" id="appTitle">Anshin</div>
     <div class="gui-toggle" role="group" aria-label="GUI density">
@@ -60,7 +52,7 @@ export function buildSidebarHtml(
       <span>Display name</span>
       <input id="nameInput" type="text" maxlength="24" placeholder="Your name" />
     </label>
-    <div class="host-mode" role="group" aria-label="Host mode">
+    <div class="host-mode${hiddenInBrowser}" role="group" aria-label="Host mode">
       <button type="button" id="hostLocalBtn" class="mode-btn active" data-mode="local">Local</button>
       <button type="button" id="hostRemoteBtn" class="mode-btn" data-mode="remote">Remote</button>
     </div>
@@ -68,7 +60,7 @@ export function buildSidebarHtml(
       <span>Server Join URL</span>
       <input id="serverUrlInput" type="text" placeholder="ws://host:3847/?t=…" />
     </label>
-    <div class="row-actions">
+    <div class="row-actions${hiddenInBrowser}">
       <button id="hostBtn" type="button">Host room</button>
     </div>
     <label class="field">
@@ -82,10 +74,12 @@ export function buildSidebarHtml(
   </section>
 
   <section id="lobbyScreen" class="screen hidden">
-    <p class="join-url-label">Share this address</p>
-    <code id="joinUrlDisplay" class="join-url"></code>
-    <ul id="joinUrlList" class="join-url-list"></ul>
-    <button id="copyUrlBtn" type="button" class="secondary">Copy URL</button>
+    <div id="shareBlock" class="share-block${hiddenInBrowser}">
+      <p class="join-url-label">Share this address</p>
+      <code id="joinUrlDisplay" class="join-url"></code>
+      <ul id="joinUrlList" class="join-url-list"></ul>
+      <button id="copyUrlBtn" type="button" class="secondary">Copy URL</button>
+    </div>
     <h2 class="lobby-heading">Players</h2>
     <ul id="lobbyList" class="lobby-list"></ul>
     <p id="chosenGame" class="chosen-game hidden"></p>
@@ -216,10 +210,11 @@ export function buildSidebarHtml(
     </div>
   </section>
 
-  <script nonce="${nonce}" id="ludo-board" type="application/json">${boardJson}</script>
-  <script nonce="${nonce}" src="${ludoScriptUri}"></script>
-  <script nonce="${nonce}" src="${bluffScriptUri}"></script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
+  <script${nonceAttr} id="ludo-board" type="application/json">${boardJson}</script>
+  <script${nonceAttr} src="${ludoScriptUri}"></script>
+  <script${nonceAttr} src="${bluffScriptUri}"></script>
+  ${browser ? `<script src="${clientUri}"></script>` : ''}
+  <script${nonceAttr} src="${scriptUri}"></script>
 </body>
 </html>`;
 }
@@ -297,13 +292,4 @@ function bluffSettingsHtml(): string {
           <option value="next">Next rank</option>
         </select>
       </label>`;
-}
-
-function getNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let text = '';
-  for (let i = 0; i < 32; i++) {
-    text += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return text;
 }

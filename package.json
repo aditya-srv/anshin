@@ -2,7 +2,7 @@
   "name": "anshin",
   "displayName": "Anshin",
   "description": "Anshin sidebar sessions panel",
-  "version": "0.0.16",
+  "version": "1.0.0",
   "publisher": "aditya",
   "engines": {
     "vscode": "^1.85.0"
@@ -47,9 +47,10 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "server": "node out/server.js",
-    "test": "npm run compile && node --test out/room/*.test.js out/uno/*.test.js out/ludo/*.test.js out/bluff/*.test.js",
+    "test": "npm run compile && node --test out/room/*.test.js out/uno/*.test.js out/ludo/*.test.js out/bluff/*.test.js out/sidebar/*.test.js",
     "build": "npm run compile && npx --yes @vscode/vsce package --allow-missing-repository",
-    "update": "node scripts/update.js"
+    "update": "node scripts/update.js",
+    "build:join": "npm run compile && node scripts/build-join-page.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -1,0 +1,4241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+:root {
+  --card-w: 36px;
+  --card-h: 52px;
+  --card-w-sm: 26px;
+  --card-h-sm: 36px;
+  --gap: 4px;
+  --card-border: var(--vscode-panel-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.35)));
+  --card-fg: var(--vscode-foreground);
+  --card-bg: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 10px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-sideBar-background);
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.title {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.gui-toggle {
+  display: inline-flex;
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.gui-btn {
+  margin: 0;
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.gui-btn + .gui-btn {
+  border-left: 1px solid var(--card-border);
+}
+
+.gui-btn.active {
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  opacity: 1;
+  font-weight: 600;
+}
+
+.gui-btn:hover {
+  opacity: 1;
+}
+
+.table {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.table-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.table-top .seat {
+  flex: 1 1 0;
+  min-width: 56px;
+  max-width: 96px;
+}
+
+.table-mid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.seat {
+  min-width: 0;
+}
+
+.seat-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.seat-count {
+  font-weight: 500;
+  opacity: 0.9;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.seat-top .seat-label,
+.seat-you .seat-label {
+  justify-content: center;
+  gap: 8px;
+}
+
+.seat-left .seat-label,
+.seat-right .seat-label {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  text-align: center;
+}
+
+.seat-left .seat-cards,
+.seat-right .seat-cards {
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 72px;
+  margin: 0 auto;
+}
+
+.seat-cards.fan {
+  position: relative;
+  min-height: var(--card-h-sm);
+}
+
+.discard-section {
+  margin: 0;
+  text-align: center;
+}
+
+.pending-draw {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--vscode-charts-orange, #e0a020);
+}
+
+.discard-section h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.row {
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+}
+
+.row.wrap {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.row.center {
+  justify-content: center;
+}
+
+.card {
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: 3px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--card-fg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-weight: 500;
+  font-size: 14px;
+  user-select: none;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.card.sm {
+  width: var(--card-w-sm);
+  height: var(--card-h-sm);
+  border-style: dashed;
+  opacity: 0.7;
+}
+
+.card.back {
+  font-size: 0;
+}
+
+.card.hand {
+  cursor: pointer;
+  transition: border-color 0.1s ease, opacity 0.1s ease;
+}
+
+.card.hand:hover {
+  border-color: var(--vscode-focusBorder, var(--card-fg));
+}
+
+.card.hand.selected {
+  border-color: var(--vscode-focusBorder, var(--card-fg));
+  border-width: 2px;
+}
+
+.card.hand.unplayable {
+  opacity: 0.45;
+  cursor: default;
+}
+
+body.gui-low .card.red .color,
+body.gui-low .card.red .value {
+  color: #ef9a9a;
+}
+
+body.gui-low .card.yellow .color,
+body.gui-low .card.yellow .value {
+  color: #f6d56b;
+}
+
+body.gui-low .card.green .color,
+body.gui-low .card.green .value {
+  color: #81c784;
+}
+
+body.gui-low .card.blue .color,
+body.gui-low .card.blue .value {
+  color: #64b5f6;
+}
+
+body.gui-low .card.wild .color,
+body.gui-low .card.wild .value {
+  color: #ce93d8;
+}
+
+.card .color {
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  line-height: 1;
+}
+
+.card .value {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* Ultra GUI: looks like a boring sessions / queue panel */
+body.gui-ultra .table {
+  gap: 8px;
+}
+
+body.gui-ultra .table-mid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+body.gui-ultra .seat-left .seat-label,
+body.gui-ultra .seat-right .seat-label,
+body.gui-ultra .seat-top .seat-label,
+body.gui-ultra .seat-you .seat-label {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+body.gui-ultra .seat-cards {
+  display: none;
+}
+
+body.gui-ultra .discard-section {
+  text-align: left;
+  padding: 6px 0;
+  border-top: 1px solid var(--card-border);
+  border-bottom: 1px solid var(--card-border);
+}
+
+body.gui-ultra .discard-section h2 {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+body.gui-ultra #discard.row {
+  justify-content: flex-start;
+}
+
+body.gui-ultra #hand.row {
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+body.gui-ultra .card,
+body.gui-ultra .card.token {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 400;
+  box-shadow: none;
+  flex-direction: row;
+  gap: 0;
+  opacity: 0.9;
+}
+
+body.gui-ultra .card.hand:hover {
+  border-color: var(--card-border);
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12));
+}
+
+body.gui-ultra .card.hand.selected {
+  border-color: var(--vscode-focusBorder, var(--card-border));
+  background: var(--vscode-list-activeSelectionBackground, rgba(128, 128, 128, 0.18));
+  border-width: 1px;
+  outline: none;
+  transform: none;
+  box-shadow: none;
+}
+
+body.gui-ultra .gui-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  opacity: 0.45;
+}
+
+body.gui-ultra .gui-btn.active {
+  opacity: 0.85;
+}
+
+body.gui-ultra .status {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* High GUI: colored UNO-style cards */
+body.gui-high {
+  --card-w: 40px;
+  --card-h: 58px;
+  --card-w-sm: 28px;
+  --card-h-sm: 40px;
+}
+
+body.gui-high .card {
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 5px;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  gap: 0;
+}
+
+body.gui-high .card.sm {
+  border-width: 1.5px;
+  border-style: solid;
+  opacity: 1;
+}
+
+body.gui-high .card.red {
+  background: #c62828;
+}
+
+body.gui-high .card.yellow {
+  background: #f9a825;
+  color: #1a1a1a;
+}
+
+body.gui-high .card.green {
+  background: #2e7d32;
+}
+
+body.gui-high .card.blue {
+  background: #1565c0;
+}
+
+body.gui-high .card.back {
+  background: #1a237e;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    rgba(255, 255, 255, 0.08) 4px,
+    rgba(255, 255, 255, 0.08) 8px
+  );
+  color: #fff;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+body.gui-high .card.back.sm {
+  font-size: 0;
+}
+
+body.gui-high .card .color {
+  display: none;
+}
+
+body.gui-high .card .value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+body.gui-high .card.hand {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+body.gui-high .card.hand:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.95);
+}
+
+body.gui-high .card.hand.selected {
+  outline: 2px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 2px;
+  transform: translateY(-4px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  border-width: 2px;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+button#unoBtn,
+button#catchBtn {
+  align-self: flex-start;
+  padding: 2px 6px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.25));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+button#unoBtn:disabled,
+button#catchBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button#drawBtn {
+  align-self: stretch;
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+button#drawBtn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+button#drawBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.status {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.85;
+  line-height: 1.35;
+  min-height: 1.35em;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#menuScreen,
+#lobbyScreen,
+#gameScreen,
+#ludoScreen {
+  flex: 1;
+  min-height: 0;
+}
+
+#menuScreen,
+#lobbyScreen,
+#ludoScreen {
+  overflow-y: auto;
+}
+
+#gameScreen {
+  overflow: hidden;
+  gap: 8px;
+}
+
+#gameScreen .game-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#gameScreen .table {
+  margin-bottom: 0;
+}
+
+.uno-dock-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+button#unoBtn.uno-dock,
+button#catchBtn.catch-dock {
+  flex-shrink: 0;
+  align-self: auto;
+}
+
+.uno-said {
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+  text-align: center;
+}
+
+body.gui-ultra .uno-said {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-weight: 400;
+  opacity: 0.7;
+  letter-spacing: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+.field input[type='text'],
+.field input[type='number'] {
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  background: var(--vscode-input-background, transparent);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font: inherit;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.host-only {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.host-mode {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mode-btn.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: var(--vscode-button-border, transparent);
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.check-row input[type='checkbox'] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.row-actions button,
+.secondary,
+#hostBtn,
+#joinBtn,
+#startBtn,
+#copyUrlBtn,
+#leaveLobbyBtn,
+#leaveGameBtn,
+#cancelWildBtn {
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.row-actions button.secondary,
+button.secondary {
+  background: transparent;
+  color: var(--vscode-foreground);
+  border-color: var(--card-border);
+}
+
+.row-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.join-url-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.join-url-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.join-url-list .join-url {
+  opacity: 0.85;
+}
+
+.join-url {
+  display: block;
+  padding: 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 11px;
+  word-break: break-all;
+  user-select: all;
+}
+
+.lobby-heading {
+  margin: 4px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.lobby-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.lobby-list li {
+  margin: 2px 0;
+}
+
+.color-line {
+  margin: 6px 0 0;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.seat.your-turn .seat-label {
+  opacity: 0.9;
+}
+
+.seat.your-turn .seat-cards,
+.seat.your-turn #hand {
+  outline: 1px solid rgba(255, 255, 255, 0.18);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+body.gui-ultra .seat.your-turn {
+  outline: none;
+}
+
+body.gui-ultra .seat.your-turn .seat-label {
+  opacity: 0.85;
+  font-weight: 500;
+}
+
+body.gui-ultra .seat.your-turn .seat-cards,
+body.gui-ultra .seat.your-turn #hand {
+  outline: none;
+}
+
+.wild-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.wild-color {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 3px;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wild-color.red {
+  background: #c62828;
+}
+
+.wild-color.yellow {
+  background: #f9a825;
+  color: #1a1a1a;
+}
+
+.wild-color.green {
+  background: #2e7d32;
+}
+
+.wild-color.blue {
+  background: #1565c0;
+}
+
+.seat.disconnected .seat-name {
+  opacity: 0.45;
+}
+
+body.gui-high .card.wild {
+  background: #212121;
+  background-image: conic-gradient(
+    #c62828 0deg 90deg,
+    #f9a825 90deg 180deg,
+    #2e7d32 180deg 270deg,
+    #1565c0 270deg 360deg
+  );
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actions #drawBtn,
+.actions #leaveGameBtn {
+  align-self: stretch;
+}
+
+</style>
+  <style>
+/*
+ * Shared board layout (low + high).
+ * Low GUI (default): stealth borders, empty yards, row-of-dots tokens, plus center.
+ * High GUI: classic filled yards / nests / home triangle.
+ */
+.ludo-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  grid-template-rows: repeat(15, 1fr);
+  width: min(100%, 420px);
+  aspect-ratio: 1;
+  margin: 8px auto;
+  border: 1px solid var(--card-border, rgba(128, 128, 128, 0.45));
+  background: var(--vscode-editor-background, transparent);
+  overflow: hidden;
+  --ludo-token-red: #c97878;
+  --ludo-token-green: #7aa87c;
+  --ludo-token-yellow: #cbb86a;
+  --ludo-token-blue: #6e9fc4;
+  --ludo-low-line: var(--card-border, rgba(128, 128, 128, 0.28));
+}
+
+.ludo-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: transparent;
+}
+
+.ludo-cell.track.blockade {
+  box-shadow: inset 0 0 0 2px var(--vscode-charts-orange, #e0a020);
+  outline: 1px solid var(--vscode-charts-orange, #e0a020);
+  outline-offset: -2px;
+}
+
+.ludo-cell.track,
+.ludo-cell.home,
+.ludo-cell.start {
+  box-shadow: inset 0 0 0 1px var(--ludo-low-line);
+}
+
+/* Low: safe spots marked with a plain *. High GUI overrides to ✦. */
+.ludo-cell.star::after {
+  content: '*';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ludo-cell.star.start::after {
+  display: none;
+}
+
+/* Low: yards stay empty — no borders, no color. */
+.ludo-cell.yard {
+  box-shadow: none;
+}
+
+.ludo-cell.center {
+  box-shadow: none;
+}
+
+/*
+ * Yard nest host (shared). Low: no frame/pads — only a row of dots.
+ * High restores classic nest + square pads.
+ */
+.ludo-yard-nest {
+  display: block;
+  position: relative;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ludo-yard-pad {
+  display: none;
+}
+
+.ludo-yard-nest .ludo-token.yard-spot {
+  width: 8%;
+  height: 8%;
+  min-width: 4px;
+  min-height: 4px;
+  border: none;
+  pointer-events: auto;
+  z-index: 2;
+}
+
+.ludo-yard-nest .ludo-token.yard-spot.red {
+  background: var(--ludo-token-red);
+}
+
+.ludo-yard-nest .ludo-token.yard-spot.green {
+  background: var(--ludo-token-green);
+}
+
+.ludo-yard-nest .ludo-token.yard-spot.yellow {
+  background: var(--ludo-token-yellow);
+}
+
+.ludo-yard-nest .ludo-token.yard-spot.blue {
+  background: var(--ludo-token-blue);
+}
+
+/* 3×3 home overlay: outline + plus (not an X — less Ludo-shaped) */
+.ludo-home-tri {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-row: 7 / span 3;
+  grid-column: 7 / span 3;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ludo-low-line);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ludo-home-tri::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      to right,
+      transparent calc(50% - 0.5px),
+      var(--ludo-low-line) calc(50% - 0.5px),
+      var(--ludo-low-line) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(
+      to bottom,
+      transparent calc(50% - 0.5px),
+      var(--ludo-low-line) calc(50% - 0.5px),
+      var(--ludo-low-line) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    );
+}
+
+.ludo-home-tri::after {
+  content: none;
+}
+
+.ludo-token {
+  width: 58%;
+  height: 58%;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  background: transparent;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+.ludo-token.red {
+  background: var(--ludo-token-red);
+}
+
+.ludo-token.green {
+  background: var(--ludo-token-green);
+}
+
+.ludo-token.yellow {
+  background: var(--ludo-token-yellow);
+}
+
+.ludo-token.blue {
+  background: var(--ludo-token-blue);
+}
+
+.ludo-token.legal {
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--vscode-focusBorder, #fff);
+}
+
+.ludo-token:disabled {
+  opacity: 1;
+}
+
+.ludo-token.moving {
+  position: absolute;
+  width: calc(100% / 15 * 0.58);
+  height: calc(100% / 15 * 0.58);
+  margin: 0;
+  z-index: 6;
+  pointer-events: none;
+  will-change: left, top;
+}
+
+.ludo-dice {
+  margin: 0;
+  font-weight: 600;
+}
+
+.chosen-game {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.field select {
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  background: var(--vscode-input-background, transparent);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font: inherit;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+/* High GUI: dark jewel-tone board with classic Ludo detailing */
+body.gui-high {
+  --ludo-red: #8b1515;
+  --ludo-red-deep: #5c0e0e;
+  --ludo-red-bright: #c62828;
+  --ludo-green: #14532d;
+  --ludo-green-deep: #0b3d1f;
+  --ludo-green-bright: #2e7d32;
+  --ludo-yellow: #a67c00;
+  --ludo-yellow-deep: #6e5200;
+  --ludo-yellow-bright: #e0a800;
+  --ludo-blue: #0b3d91;
+  --ludo-blue-deep: #072a63;
+  --ludo-blue-bright: #1565c0;
+  --ludo-track: #d9cbb3;
+  --ludo-track-line: #2a2118;
+  --ludo-nest: #efe4cf;
+  --ludo-wood-outer: #1a120c;
+  --ludo-wood-inner: #3b2a1c;
+  --ludo-wood-mid: #5a4030;
+}
+
+body.gui-high .ludo-board {
+  border: 5px solid var(--ludo-wood-outer);
+  border-radius: 4px;
+  background:
+    linear-gradient(145deg, rgba(90, 64, 48, 0.35), transparent 42%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.015) 0 1px,
+      transparent 1px 7px
+    ),
+    linear-gradient(180deg, #2c2118, #1a140f);
+  box-shadow:
+    inset 0 0 0 2px var(--ludo-wood-mid),
+    inset 0 0 0 4px var(--ludo-wood-inner),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+body.gui-high .ludo-cell.track {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.18), transparent 55%),
+    var(--ludo-track);
+  box-shadow: inset 0 0 0 1px rgba(42, 33, 24, 0.55);
+}
+
+body.gui-high .ludo-cell.home.red {
+  background:
+    linear-gradient(90deg, var(--ludo-red-deep), var(--ludo-red));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+body.gui-high .ludo-cell.home.green {
+  background:
+    linear-gradient(180deg, var(--ludo-green-deep), var(--ludo-green));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+body.gui-high .ludo-cell.home.yellow {
+  background:
+    linear-gradient(270deg, var(--ludo-yellow-deep), var(--ludo-yellow));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+body.gui-high .ludo-cell.home.blue {
+  background:
+    linear-gradient(0deg, var(--ludo-blue-deep), var(--ludo-blue));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+body.gui-high .ludo-cell.yard.red {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.08), transparent 45%),
+    linear-gradient(145deg, var(--ludo-red), var(--ludo-red-deep));
+  box-shadow: none;
+}
+
+body.gui-high .ludo-cell.yard.green {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.08), transparent 45%),
+    linear-gradient(145deg, var(--ludo-green), var(--ludo-green-deep));
+  box-shadow: none;
+}
+
+body.gui-high .ludo-cell.yard.yellow {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.1), transparent 45%),
+    linear-gradient(145deg, var(--ludo-yellow), var(--ludo-yellow-deep));
+  box-shadow: none;
+}
+
+body.gui-high .ludo-cell.yard.blue {
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.08), transparent 45%),
+    linear-gradient(145deg, var(--ludo-blue), var(--ludo-blue-deep));
+  box-shadow: none;
+}
+
+/* 4×4 nest cells stay clear so the nest panel + color ring show through */
+body.gui-high .ludo-cell.yard.nest {
+  background: transparent;
+  box-shadow: none;
+}
+
+body.gui-high .ludo-yard-nest {
+  border-radius: 5px;
+  background: var(--ludo-nest);
+  box-shadow:
+    inset 0 0 0 2px rgba(42, 33, 24, 0.28),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+body.gui-high .ludo-yard-pad {
+  display: block;
+  position: absolute;
+  width: 22%;
+  height: 22%;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: 2px solid var(--nest-ring, #888);
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.35), transparent 55%),
+    rgba(255, 255, 255, 0.22);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.45),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.12);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+body.gui-high .ludo-yard-nest.red {
+  --nest-ring: var(--ludo-red-bright);
+}
+
+body.gui-high .ludo-yard-nest.green {
+  --nest-ring: var(--ludo-green-bright);
+}
+
+body.gui-high .ludo-yard-nest.yellow {
+  --nest-ring: var(--ludo-yellow-bright);
+}
+
+body.gui-high .ludo-yard-nest.blue {
+  --nest-ring: var(--ludo-blue-bright);
+}
+
+body.gui-high .ludo-yard-nest .ludo-token.yard-spot {
+  width: 16%;
+  height: 16%;
+  min-width: 0;
+  min-height: 0;
+  border: 1.5px solid rgba(0, 0, 0, 0.55);
+}
+
+body.gui-high .ludo-yard-nest .ludo-token.yard-spot.red {
+  background:
+    radial-gradient(circle at 32% 28%, #ef5350, var(--ludo-red) 48%, var(--ludo-red-deep));
+}
+
+body.gui-high .ludo-yard-nest .ludo-token.yard-spot.green {
+  background:
+    radial-gradient(circle at 32% 28%, #66bb6a, var(--ludo-green) 48%, var(--ludo-green-deep));
+}
+
+body.gui-high .ludo-yard-nest .ludo-token.yard-spot.yellow {
+  background:
+    radial-gradient(circle at 32% 28%, #ffe082, var(--ludo-yellow-bright) 48%, var(--ludo-yellow-deep));
+}
+
+body.gui-high .ludo-yard-nest .ludo-token.yard-spot.blue {
+  background:
+    radial-gradient(circle at 32% 28%, #64b5f6, var(--ludo-blue) 48%, var(--ludo-blue-deep));
+}
+
+body.gui-high .ludo-cell.start.red {
+  background:
+    linear-gradient(145deg, var(--ludo-red-bright), var(--ludo-red-deep));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+body.gui-high .ludo-cell.start.green {
+  background:
+    linear-gradient(145deg, var(--ludo-green-bright), var(--ludo-green-deep));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+body.gui-high .ludo-cell.start.yellow {
+  background:
+    linear-gradient(145deg, var(--ludo-yellow-bright), var(--ludo-yellow-deep));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+body.gui-high .ludo-cell.start.blue {
+  background:
+    linear-gradient(145deg, var(--ludo-blue-bright), var(--ludo-blue-deep));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+body.gui-high .ludo-cell.start::before {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body.gui-high .ludo-cell.start.yellow::before {
+  color: rgba(40, 28, 0, 0.9);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+body.gui-high .ludo-cell.start.red::before {
+  content: '→';
+}
+
+body.gui-high .ludo-cell.start.green::before {
+  content: '↓';
+}
+
+body.gui-high .ludo-cell.start.yellow::before {
+  content: '←';
+}
+
+body.gui-high .ludo-cell.start.blue::before {
+  content: '↑';
+}
+
+body.gui-high .ludo-cell.star::after {
+  content: '✦';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: #8a6a12;
+  opacity: 1;
+  text-shadow:
+    0 0 2px rgba(255, 214, 90, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body.gui-high .ludo-cell.star.start::after {
+  display: none;
+}
+
+body.gui-high .ludo-cell.center {
+  background: transparent;
+  box-shadow: none;
+  z-index: 1;
+}
+
+body.gui-high .ludo-home-tri {
+  background: conic-gradient(
+    from -45deg,
+    var(--ludo-green) 0deg 90deg,
+    var(--ludo-yellow) 90deg 180deg,
+    var(--ludo-blue) 180deg 270deg,
+    var(--ludo-red) 270deg 360deg
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+body.gui-high .ludo-home-tri::before {
+  inset: 38%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.22), transparent 50%),
+    radial-gradient(circle at 50% 50%, #2a2118, #120e0a);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(212, 175, 55, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+body.gui-high .ludo-home-tri::after {
+  content: 'HOME';
+  position: relative;
+  z-index: 1;
+  font-size: 6px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #e8d5a3;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+
+body.gui-high .ludo-token {
+  width: 62%;
+  height: 62%;
+  border: 1.5px solid rgba(0, 0, 0, 0.55);
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.35),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.35),
+    0 2px 3px rgba(0, 0, 0, 0.4);
+}
+
+body.gui-high .ludo-token.red {
+  background:
+    radial-gradient(circle at 32% 28%, #ef5350, var(--ludo-red) 48%, var(--ludo-red-deep));
+}
+
+body.gui-high .ludo-token.green {
+  background:
+    radial-gradient(circle at 32% 28%, #66bb6a, var(--ludo-green) 48%, var(--ludo-green-deep));
+}
+
+body.gui-high .ludo-token.yellow {
+  background:
+    radial-gradient(circle at 32% 28%, #ffe082, var(--ludo-yellow-bright) 48%, var(--ludo-yellow-deep));
+}
+
+body.gui-high .ludo-token.blue {
+  background:
+    radial-gradient(circle at 32% 28%, #64b5f6, var(--ludo-blue) 48%, var(--ludo-blue-deep));
+}
+
+body.gui-high .ludo-token.legal {
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.35),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.35),
+    0 0 0 2px var(--vscode-focusBorder, #fff),
+    0 0 8px rgba(255, 214, 90, 0.45);
+}
+
+body.gui-high .ludo-dice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(90, 64, 48, 0.65);
+  background:
+    linear-gradient(180deg, rgba(90, 64, 48, 0.35), rgba(26, 18, 12, 0.55));
+  color: #efe4cf;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+</style>
+  <style>
+.game-blurb {
+  margin: 0 0 8px;
+  font-size: 12px;
+  opacity: 0.85;
+  line-height: 1.35;
+}
+
+#bluffScreen {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.bluff-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bluff-opponents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.bluff-seat {
+  min-width: 88px;
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  text-align: center;
+  font-size: 11px;
+}
+
+.bluff-seat.your-turn {
+  border-color: var(--vscode-focusBorder, #007fd4);
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, #007fd4);
+}
+
+.bluff-seat.offline {
+  opacity: 0.55;
+}
+
+.bluff-seat-name {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.bluff-seat-count {
+  opacity: 0.8;
+}
+
+.bluff-table {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border: 1px dashed var(--card-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--vscode-sideBar-background) 88%, var(--vscode-foreground) 12%);
+}
+
+.bluff-pile {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  min-height: var(--card-h);
+}
+
+.bluff-card,
+.bluff-card-back {
+  width: var(--card-w);
+  height: var(--card-h);
+  border: 1px solid var(--card-border);
+  border-radius: 3px;
+  background: var(--vscode-editor-background, var(--card-bg));
+  color: var(--card-fg);
+  font-size: 10px;
+  line-height: 1.1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.bluff-card-back {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--vscode-button-background, #0e639c) 35%, transparent),
+      color-mix(in srgb, var(--vscode-button-background, #0e639c) 35%, transparent) 3px,
+      transparent 3px,
+      transparent 6px
+    ),
+    var(--vscode-editor-background, #1e1e1e);
+  color: transparent;
+}
+
+.bluff-card.selected {
+  transform: translateY(-6px);
+  border-color: var(--vscode-focusBorder, #007fd4);
+  box-shadow: 0 2px 0 var(--vscode-focusBorder, #007fd4);
+}
+
+.bluff-card.red {
+  color: #c54646;
+}
+
+.bluff-card button,
+button.bluff-card {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.bluff-claim {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.bluff-hand-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bluff-ranks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+
+.bluff-ranks.hidden,
+.bluff-rank-lock.hidden {
+  display: none;
+}
+
+.bluff-rank-lock {
+  margin: 0;
+  padding: 6px 10px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-focusBorder, #007fd4);
+  border-radius: 4px;
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.15));
+}
+
+.bluff-ranks--locked {
+  pointer-events: none;
+  user-select: none;
+}
+
+.bluff-rank-btn {
+  margin: 0;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--card-border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.bluff-rank-btn:hover {
+  opacity: 1;
+}
+
+.bluff-rank-btn.active {
+  opacity: 1;
+  border-color: var(--vscode-focusBorder, #007fd4);
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, #007fd4);
+}
+
+.bluff-rank-btn:disabled,
+.bluff-ranks--locked .bluff-rank-btn {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.bluff-rank-btn.active:disabled,
+.bluff-ranks--locked .bluff-rank-btn.active {
+  opacity: 1;
+  cursor: default;
+}
+
+.bluff-hand {
+  gap: var(--gap);
+  justify-content: center;
+}
+
+.bluff-hand .bluff-card {
+  transition: transform 0.12s ease;
+}
+
+.bluff-selected {
+  margin: 0;
+  font-size: 11px;
+  text-align: center;
+  opacity: 0.85;
+  min-height: 1.2em;
+}
+
+.bluff-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bluff-challenge {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d) !important;
+  color: var(--vscode-inputValidation-errorForeground, #f48771) !important;
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100) !important;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.bluff-challenge:disabled {
+  opacity: 0.45;
+}
+
+.bluff-reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: color-mix(in srgb, var(--vscode-sideBar-background) 35%, transparent);
+  z-index: 5;
+}
+
+.bluff-reveal.hidden {
+  display: none;
+}
+
+.bluff-reveal-card {
+  width: min(100%, 280px);
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--vscode-sideBar-background);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: bluff-reveal-in 0.22s ease-out;
+}
+
+.bluff-reveal-card h2 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.bluff-reveal-cards {
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: var(--card-h);
+}
+
+.bluff-reveal-cards .bluff-card {
+  animation: bluff-flip 0.28s ease-out;
+}
+
+button.bluff-card-back.bluff-pick-target {
+  cursor: pointer;
+  font: inherit;
+  padding: 2px;
+  border-style: solid;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+button.bluff-card-back.bluff-pick-target:hover,
+button.bluff-card-back.bluff-pick-target:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--vscode-widget-shadow, #000) 35%, transparent);
+  outline: 1px solid var(--vscode-focusBorder, var(--card-border));
+}
+
+@keyframes bluff-reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bluff-flip {
+  from {
+    transform: rotateY(90deg);
+    opacity: 0.2;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+body.gui-ultra .bluff-challenge {
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+</style>
+  <title>Anshin</title>
+</head>
+<body class="gui-low browser-mode">
+  <header class="topbar">
+    <div class="title" id="appTitle">Anshin</div>
+    <div class="gui-toggle" role="group" aria-label="GUI density">
+      <button type="button" id="guiUltraBtn" class="gui-btn" data-mode="ultra">Ultra</button>
+      <button type="button" id="guiLowBtn" class="gui-btn" data-mode="low">Low</button>
+      <button type="button" id="guiHighBtn" class="gui-btn" data-mode="high">High</button>
+    </div>
+  </header>
+
+  <section id="menuScreen" class="screen">
+    <label class="field">
+      <span>Display name</span>
+      <input id="nameInput" type="text" maxlength="24" placeholder="Your name" />
+    </label>
+    <div class="host-mode hidden" role="group" aria-label="Host mode">
+      <button type="button" id="hostLocalBtn" class="mode-btn active" data-mode="local">Local</button>
+      <button type="button" id="hostRemoteBtn" class="mode-btn" data-mode="remote">Remote</button>
+    </div>
+    <label id="serverUrlField" class="field hidden">
+      <span>Server Join URL</span>
+      <input id="serverUrlInput" type="text" placeholder="ws://host:3847/?t=…" />
+    </label>
+    <div class="row-actions hidden">
+      <button id="hostBtn" type="button">Host room</button>
+    </div>
+    <label class="field">
+      <span>Join URL</span>
+      <input id="urlInput" type="text" placeholder="ws://192.168.x.x:3847/?t=…" />
+    </label>
+    <div class="row-actions">
+      <button id="joinBtn" type="button">Join room</button>
+    </div>
+    <p id="menuStatus" class="status"></p>
+  </section>
+
+  <section id="lobbyScreen" class="screen hidden">
+    <div id="shareBlock" class="share-block hidden">
+      <p class="join-url-label">Share this address</p>
+      <code id="joinUrlDisplay" class="join-url"></code>
+      <ul id="joinUrlList" class="join-url-list"></ul>
+      <button id="copyUrlBtn" type="button" class="secondary">Copy URL</button>
+    </div>
+    <h2 class="lobby-heading">Players</h2>
+    <ul id="lobbyList" class="lobby-list"></ul>
+    <p id="chosenGame" class="chosen-game hidden"></p>
+    <div id="hostOpts" class="host-only hidden">
+      <label class="field">
+        <span>Game</span>
+        <select id="gameSelect"><option value="uno">Uno</option><option value="ludo">Ludo</option><option value="bluff">Bluff</option></select>
+      </label>
+      <div id="settings-uno" class="game-settings"><label class="field">
+        <span>Cards each</span>
+        <input id="cardsPerPlayerInput" type="number" min="1" max="15" value="7" />
+      </label>
+      <label class="field">
+        <span class="check-row">
+          <input id="guaranteeSpecialInput" type="checkbox" checked />
+          1 special card each
+        </span>
+      </label>
+      <label class="field">
+        <span class="check-row">
+          <input id="stackDrawsInput" type="checkbox" />
+          Stack draws
+        </span>
+      </label></div><div id="settings-ludo" class="game-settings hidden"><p class="game-blurb">Race four tokens home. · 2–4 players</p>
+      <label class="field">
+        <span class="check-row">
+          <input id="blockadesInput" type="checkbox" />
+          Blockades
+        </span>
+      </label></div><div id="settings-bluff" class="game-settings hidden"><p class="game-blurb">Trust nobody. Challenge everyone. · 2–6 players</p>
+      <label class="field">
+        <span>Decks</span>
+        <select id="bluffDeckCountSelect">
+          <option value="1" selected>1</option>
+          <option value="2">2</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Claim</span>
+        <select id="bluffClaimModeSelect">
+          <option value="same" selected>Same rank</option>
+          <option value="next">Next rank</option>
+        </select>
+      </label></div>
+      <div class="row-actions">
+        <button id="startBtn" type="button">Start game</button>
+      </div>
+    </div>
+    <div class="row-actions">
+      <button id="leaveLobbyBtn" type="button" class="secondary">Leave</button>
+    </div>
+    <p id="lobbyStatus" class="status"></p>
+  </section>
+
+  <section id="gameScreen" class="screen hidden">
+    <div class="game-scroll">
+      <div class="table">
+        <div class="table-top">
+          <section class="seat seat-top hidden" data-seat-slot="0">
+            <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
+            <div class="seat-cards row center"></div>
+          </section>
+          <section class="seat seat-top hidden" data-seat-slot="1">
+            <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
+            <div class="seat-cards row center"></div>
+          </section>
+          <section class="seat seat-top hidden" data-seat-slot="2">
+            <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
+            <div class="seat-cards row center"></div>
+          </section>
+        </div>
+
+        <div class="table-mid">
+          <section class="seat seat-left hidden" data-seat-slot="3">
+            <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
+            <div class="seat-cards row"></div>
+          </section>
+
+          <section class="section discard-section">
+            <h2 id="discardLabel">Discard</h2>
+            <div id="discard" class="row center"></div>
+            <p id="unoSaidLine" class="uno-said hidden"></p>
+            <p id="colorLine" class="color-line"></p>
+          </section>
+
+          <section class="seat seat-right hidden" data-seat-slot="4">
+            <div class="seat-label"><span class="seat-name"></span><span class="seat-count"></span></div>
+            <div class="seat-cards row"></div>
+          </section>
+        </div>
+
+        <section class="seat seat-you">
+          <div class="seat-label"><span class="seat-name" id="youLabel">You</span><span id="youCount" class="seat-count"></span></div>
+          <div id="hand" class="row wrap"></div>
+        </section>
+      </div>
+
+      <div id="wildPicker" class="wild-picker hidden">
+        <span>Choose color</span>
+        <button type="button" class="wild-color red" data-color="red">R</button>
+        <button type="button" class="wild-color yellow" data-color="yellow">Y</button>
+        <button type="button" class="wild-color green" data-color="green">G</button>
+        <button type="button" class="wild-color blue" data-color="blue">B</button>
+        <button type="button" id="cancelWildBtn" class="secondary">Cancel</button>
+      </div>
+
+      <section class="section actions">
+        <button id="drawBtn" type="button">Draw</button>
+        <button id="leaveGameBtn" type="button" class="secondary">Leave</button>
+        <p id="status" class="status"></p>
+      </section>
+    </div>
+
+    <div class="uno-dock-bar hidden">
+      <button id="unoBtn" type="button" class="uno-dock">UNO</button>
+      <button id="catchBtn" type="button" class="catch-dock">Catch</button>
+    </div>
+  </section>
+
+  <section id="ludoScreen" class="screen hidden">
+    <p id="ludoDice" class="ludo-dice"></p>
+    <div id="ludoBoard" class="ludo-board"></div>
+    <p id="ludoStatus" class="status"></p>
+    <div class="row-actions">
+      <button id="ludoRoll" type="button">Roll</button>
+      <button id="ludoLeave" type="button" class="secondary">Leave</button>
+    </div>
+  </section>
+
+  <section id="bluffScreen" class="screen hidden">
+    <div class="bluff-scroll">
+      <div id="bluffOpponents" class="bluff-opponents"></div>
+      <section class="bluff-table">
+        <div id="bluffPile" class="bluff-pile"></div>
+        <p id="bluffClaim" class="bluff-claim"></p>
+        <p id="bluffTableStatus" class="status"></p>
+      </section>
+      <section class="bluff-hand-section">
+        <div class="seat-label"><span id="bluffYouLabel">You</span><span id="bluffYouCount" class="seat-count"></span></div>
+        <p id="bluffRankLock" class="bluff-rank-lock hidden" aria-live="polite"></p>
+        <div id="bluffRanks" class="bluff-ranks" role="group" aria-label="Declare rank"></div>
+        <div id="bluffHand" class="bluff-hand row wrap"></div>
+        <p id="bluffSelected" class="bluff-selected"></p>
+      </section>
+      <section id="bluffControls" class="bluff-controls">
+        <div class="row-actions">
+          <button id="bluffPlay" type="button">Play cards</button>
+          <button id="bluffPass" type="button" class="secondary">Pass</button>
+          <button id="bluffChallenge" type="button" class="bluff-challenge">Call bluff!</button>
+          <button id="bluffLeave" type="button" class="secondary">Leave</button>
+        </div>
+      </section>
+      <p id="bluffStatus" class="status"></p>
+    </div>
+    <div id="bluffPick" class="bluff-reveal hidden" role="dialog" aria-modal="true">
+      <div class="bluff-reveal-card">
+        <h2 id="bluffPickTitle">Call bluff</h2>
+        <p id="bluffPickMsg" class="status">Pick one face-down card to check against the claim.</p>
+        <div id="bluffPickCards" class="bluff-reveal-cards row center"></div>
+        <button id="bluffPickCancel" type="button" class="secondary">Cancel</button>
+      </div>
+    </div>
+    <div id="bluffReveal" class="bluff-reveal hidden" role="dialog" aria-modal="true">
+      <div class="bluff-reveal-card">
+        <h2 id="bluffRevealTitle">Challenge</h2>
+        <p id="bluffRevealMsg" class="status"></p>
+        <div id="bluffRevealCards" class="bluff-reveal-cards row center"></div>
+        <button id="bluffRevealClose" type="button">Continue</button>
+      </div>
+    </div>
+  </section>
+
+  <script id="ludo-board" type="application/json">{"cells":[{"row":0,"col":0,"kind":"yard","color":"red"},{"row":0,"col":1,"kind":"yard","color":"red"},{"row":0,"col":2,"kind":"yard","color":"red"},{"row":0,"col":3,"kind":"yard","color":"red"},{"row":0,"col":4,"kind":"yard","color":"red"},{"row":0,"col":5,"kind":"yard","color":"red"},{"row":1,"col":0,"kind":"yard","color":"red"},{"row":1,"col":1,"kind":"yard","color":"red"},{"row":1,"col":2,"kind":"yard","color":"red"},{"row":1,"col":3,"kind":"yard","color":"red"},{"row":1,"col":4,"kind":"yard","color":"red"},{"row":1,"col":5,"kind":"yard","color":"red"},{"row":2,"col":0,"kind":"yard","color":"red"},{"row":2,"col":1,"kind":"yard","color":"red"},{"row":2,"col":2,"kind":"yard","color":"red","yardSlot":0},{"row":2,"col":3,"kind":"yard","color":"red"},{"row":2,"col":4,"kind":"yard","color":"red","yardSlot":1},{"row":2,"col":5,"kind":"yard","color":"red"},{"row":3,"col":0,"kind":"yard","color":"red"},{"row":3,"col":1,"kind":"yard","color":"red"},{"row":3,"col":2,"kind":"yard","color":"red"},{"row":3,"col":3,"kind":"yard","color":"red"},{"row":3,"col":4,"kind":"yard","color":"red"},{"row":3,"col":5,"kind":"yard","color":"red"},{"row":4,"col":0,"kind":"yard","color":"red"},{"row":4,"col":1,"kind":"yard","color":"red"},{"row":4,"col":2,"kind":"yard","color":"red","yardSlot":2},{"row":4,"col":3,"kind":"yard","color":"red"},{"row":4,"col":4,"kind":"yard","color":"red","yardSlot":3},{"row":4,"col":5,"kind":"yard","color":"red"},{"row":5,"col":0,"kind":"yard","color":"red"},{"row":5,"col":1,"kind":"yard","color":"red"},{"row":5,"col":2,"kind":"yard","color":"red"},{"row":5,"col":3,"kind":"yard","color":"red"},{"row":5,"col":4,"kind":"yard","color":"red"},{"row":5,"col":5,"kind":"yard","color":"red"},{"row":0,"col":9,"kind":"yard","color":"green"},{"row":0,"col":10,"kind":"yard","color":"green"},{"row":0,"col":11,"kind":"yard","color":"green"},{"row":0,"col":12,"kind":"yard","color":"green"},{"row":0,"col":13,"kind":"yard","color":"green"},{"row":0,"col":14,"kind":"yard","color":"green"},{"row":1,"col":9,"kind":"yard","color":"green"},{"row":1,"col":10,"kind":"yard","color":"green"},{"row":1,"col":11,"kind":"yard","color":"green"},{"row":1,"col":12,"kind":"yard","color":"green"},{"row":1,"col":13,"kind":"yard","color":"green"},{"row":1,"col":14,"kind":"yard","color":"green"},{"row":2,"col":9,"kind":"yard","color":"green"},{"row":2,"col":10,"kind":"yard","color":"green"},{"row":2,"col":11,"kind":"yard","color":"green","yardSlot":0},{"row":2,"col":12,"kind":"yard","color":"green"},{"row":2,"col":13,"kind":"yard","color":"green","yardSlot":1},{"row":2,"col":14,"kind":"yard","color":"green"},{"row":3,"col":9,"kind":"yard","color":"green"},{"row":3,"col":10,"kind":"yard","color":"green"},{"row":3,"col":11,"kind":"yard","color":"green"},{"row":3,"col":12,"kind":"yard","color":"green"},{"row":3,"col":13,"kind":"yard","color":"green"},{"row":3,"col":14,"kind":"yard","color":"green"},{"row":4,"col":9,"kind":"yard","color":"green"},{"row":4,"col":10,"kind":"yard","color":"green"},{"row":4,"col":11,"kind":"yard","color":"green","yardSlot":2},{"row":4,"col":12,"kind":"yard","color":"green"},{"row":4,"col":13,"kind":"yard","color":"green","yardSlot":3},{"row":4,"col":14,"kind":"yard","color":"green"},{"row":5,"col":9,"kind":"yard","color":"green"},{"row":5,"col":10,"kind":"yard","color":"green"},{"row":5,"col":11,"kind":"yard","color":"green"},{"row":5,"col":12,"kind":"yard","color":"green"},{"row":5,"col":13,"kind":"yard","color":"green"},{"row":5,"col":14,"kind":"yard","color":"green"},{"row":9,"col":9,"kind":"yard","color":"yellow"},{"row":9,"col":10,"kind":"yard","color":"yellow"},{"row":9,"col":11,"kind":"yard","color":"yellow"},{"row":9,"col":12,"kind":"yard","color":"yellow"},{"row":9,"col":13,"kind":"yard","color":"yellow"},{"row":9,"col":14,"kind":"yard","color":"yellow"},{"row":10,"col":9,"kind":"yard","color":"yellow"},{"row":10,"col":10,"kind":"yard","color":"yellow"},{"row":10,"col":11,"kind":"yard","color":"yellow"},{"row":10,"col":12,"kind":"yard","color":"yellow"},{"row":10,"col":13,"kind":"yard","color":"yellow"},{"row":10,"col":14,"kind":"yard","color":"yellow"},{"row":11,"col":9,"kind":"yard","color":"yellow"},{"row":11,"col":10,"kind":"yard","color":"yellow"},{"row":11,"col":11,"kind":"yard","color":"yellow","yardSlot":0},{"row":11,"col":12,"kind":"yard","color":"yellow"},{"row":11,"col":13,"kind":"yard","color":"yellow","yardSlot":1},{"row":11,"col":14,"kind":"yard","color":"yellow"},{"row":12,"col":9,"kind":"yard","color":"yellow"},{"row":12,"col":10,"kind":"yard","color":"yellow"},{"row":12,"col":11,"kind":"yard","color":"yellow"},{"row":12,"col":12,"kind":"yard","color":"yellow"},{"row":12,"col":13,"kind":"yard","color":"yellow"},{"row":12,"col":14,"kind":"yard","color":"yellow"},{"row":13,"col":9,"kind":"yard","color":"yellow"},{"row":13,"col":10,"kind":"yard","color":"yellow"},{"row":13,"col":11,"kind":"yard","color":"yellow","yardSlot":2},{"row":13,"col":12,"kind":"yard","color":"yellow"},{"row":13,"col":13,"kind":"yard","color":"yellow","yardSlot":3},{"row":13,"col":14,"kind":"yard","color":"yellow"},{"row":14,"col":9,"kind":"yard","color":"yellow"},{"row":14,"col":10,"kind":"yard","color":"yellow"},{"row":14,"col":11,"kind":"yard","color":"yellow"},{"row":14,"col":12,"kind":"yard","color":"yellow"},{"row":14,"col":13,"kind":"yard","color":"yellow"},{"row":14,"col":14,"kind":"yard","color":"yellow"},{"row":9,"col":0,"kind":"yard","color":"blue"},{"row":9,"col":1,"kind":"yard","color":"blue"},{"row":9,"col":2,"kind":"yard","color":"blue"},{"row":9,"col":3,"kind":"yard","color":"blue"},{"row":9,"col":4,"kind":"yard","color":"blue"},{"row":9,"col":5,"kind":"yard","color":"blue"},{"row":10,"col":0,"kind":"yard","color":"blue"},{"row":10,"col":1,"kind":"yard","color":"blue"},{"row":10,"col":2,"kind":"yard","color":"blue"},{"row":10,"col":3,"kind":"yard","color":"blue"},{"row":10,"col":4,"kind":"yard","color":"blue"},{"row":10,"col":5,"kind":"yard","color":"blue"},{"row":11,"col":0,"kind":"yard","color":"blue"},{"row":11,"col":1,"kind":"yard","color":"blue"},{"row":11,"col":2,"kind":"yard","color":"blue","yardSlot":0},{"row":11,"col":3,"kind":"yard","color":"blue"},{"row":11,"col":4,"kind":"yard","color":"blue","yardSlot":1},{"row":11,"col":5,"kind":"yard","color":"blue"},{"row":12,"col":0,"kind":"yard","color":"blue"},{"row":12,"col":1,"kind":"yard","color":"blue"},{"row":12,"col":2,"kind":"yard","color":"blue"},{"row":12,"col":3,"kind":"yard","color":"blue"},{"row":12,"col":4,"kind":"yard","color":"blue"},{"row":12,"col":5,"kind":"yard","color":"blue"},{"row":13,"col":0,"kind":"yard","color":"blue"},{"row":13,"col":1,"kind":"yard","color":"blue"},{"row":13,"col":2,"kind":"yard","color":"blue","yardSlot":2},{"row":13,"col":3,"kind":"yard","color":"blue"},{"row":13,"col":4,"kind":"yard","color":"blue","yardSlot":3},{"row":13,"col":5,"kind":"yard","color":"blue"},{"row":14,"col":0,"kind":"yard","color":"blue"},{"row":14,"col":1,"kind":"yard","color":"blue"},{"row":14,"col":2,"kind":"yard","color":"blue"},{"row":14,"col":3,"kind":"yard","color":"blue"},{"row":14,"col":4,"kind":"yard","color":"blue"},{"row":14,"col":5,"kind":"yard","color":"blue"},{"row":6,"col":6,"kind":"center"},{"row":6,"col":7,"kind":"center"},{"row":6,"col":8,"kind":"center"},{"row":7,"col":6,"kind":"center"},{"row":7,"col":7,"kind":"center"},{"row":7,"col":8,"kind":"center"},{"row":8,"col":6,"kind":"center"},{"row":8,"col":7,"kind":"center"},{"row":8,"col":8,"kind":"center"},{"row":7,"col":1,"kind":"home","color":"red","homeStep":0},{"row":7,"col":2,"kind":"home","color":"red","homeStep":1},{"row":7,"col":3,"kind":"home","color":"red","homeStep":2},{"row":7,"col":4,"kind":"home","color":"red","homeStep":3},{"row":7,"col":5,"kind":"home","color":"red","homeStep":4},{"row":1,"col":7,"kind":"home","color":"green","homeStep":0},{"row":2,"col":7,"kind":"home","color":"green","homeStep":1},{"row":3,"col":7,"kind":"home","color":"green","homeStep":2},{"row":4,"col":7,"kind":"home","color":"green","homeStep":3},{"row":5,"col":7,"kind":"home","color":"green","homeStep":4},{"row":7,"col":13,"kind":"home","color":"yellow","homeStep":0},{"row":7,"col":12,"kind":"home","color":"yellow","homeStep":1},{"row":7,"col":11,"kind":"home","color":"yellow","homeStep":2},{"row":7,"col":10,"kind":"home","color":"yellow","homeStep":3},{"row":7,"col":9,"kind":"home","color":"yellow","homeStep":4},{"row":13,"col":7,"kind":"home","color":"blue","homeStep":0},{"row":12,"col":7,"kind":"home","color":"blue","homeStep":1},{"row":11,"col":7,"kind":"home","color":"blue","homeStep":2},{"row":10,"col":7,"kind":"home","color":"blue","homeStep":3},{"row":9,"col":7,"kind":"home","color":"blue","homeStep":4},{"row":6,"col":1,"kind":"track","trackIndex":0,"color":"red","star":false,"start":true},{"row":6,"col":2,"kind":"track","trackIndex":1,"star":false,"start":false},{"row":6,"col":3,"kind":"track","trackIndex":2,"star":false,"start":false},{"row":6,"col":4,"kind":"track","trackIndex":3,"star":false,"start":false},{"row":6,"col":5,"kind":"track","trackIndex":4,"star":false,"start":false},{"row":5,"col":6,"kind":"track","trackIndex":5,"star":false,"start":false},{"row":4,"col":6,"kind":"track","trackIndex":6,"star":false,"start":false},{"row":3,"col":6,"kind":"track","trackIndex":7,"star":false,"start":false},{"row":2,"col":6,"kind":"track","trackIndex":8,"star":true,"start":false},{"row":1,"col":6,"kind":"track","trackIndex":9,"star":false,"start":false},{"row":0,"col":6,"kind":"track","trackIndex":10,"star":false,"start":false},{"row":0,"col":7,"kind":"track","trackIndex":11,"star":false,"start":false},{"row":0,"col":8,"kind":"track","trackIndex":12,"star":false,"start":false},{"row":1,"col":8,"kind":"track","trackIndex":13,"color":"green","star":false,"start":true},{"row":2,"col":8,"kind":"track","trackIndex":14,"star":false,"start":false},{"row":3,"col":8,"kind":"track","trackIndex":15,"star":false,"start":false},{"row":4,"col":8,"kind":"track","trackIndex":16,"star":false,"start":false},{"row":5,"col":8,"kind":"track","trackIndex":17,"star":false,"start":false},{"row":6,"col":9,"kind":"track","trackIndex":18,"star":false,"start":false},{"row":6,"col":10,"kind":"track","trackIndex":19,"star":false,"start":false},{"row":6,"col":11,"kind":"track","trackIndex":20,"star":false,"start":false},{"row":6,"col":12,"kind":"track","trackIndex":21,"star":true,"start":false},{"row":6,"col":13,"kind":"track","trackIndex":22,"star":false,"start":false},{"row":6,"col":14,"kind":"track","trackIndex":23,"star":false,"start":false},{"row":7,"col":14,"kind":"track","trackIndex":24,"star":false,"start":false},{"row":8,"col":14,"kind":"track","trackIndex":25,"star":false,"start":false},{"row":8,"col":13,"kind":"track","trackIndex":26,"color":"yellow","star":false,"start":true},{"row":8,"col":12,"kind":"track","trackIndex":27,"star":false,"start":false},{"row":8,"col":11,"kind":"track","trackIndex":28,"star":false,"start":false},{"row":8,"col":10,"kind":"track","trackIndex":29,"star":false,"start":false},{"row":8,"col":9,"kind":"track","trackIndex":30,"star":false,"start":false},{"row":9,"col":8,"kind":"track","trackIndex":31,"star":false,"start":false},{"row":10,"col":8,"kind":"track","trackIndex":32,"star":false,"start":false},{"row":11,"col":8,"kind":"track","trackIndex":33,"star":false,"start":false},{"row":12,"col":8,"kind":"track","trackIndex":34,"star":true,"start":false},{"row":13,"col":8,"kind":"track","trackIndex":35,"star":false,"start":false},{"row":14,"col":8,"kind":"track","trackIndex":36,"star":false,"start":false},{"row":14,"col":7,"kind":"track","trackIndex":37,"star":false,"start":false},{"row":14,"col":6,"kind":"track","trackIndex":38,"star":false,"start":false},{"row":13,"col":6,"kind":"track","trackIndex":39,"color":"blue","star":false,"start":true},{"row":12,"col":6,"kind":"track","trackIndex":40,"star":false,"start":false},{"row":11,"col":6,"kind":"track","trackIndex":41,"star":false,"start":false},{"row":10,"col":6,"kind":"track","trackIndex":42,"star":false,"start":false},{"row":9,"col":6,"kind":"track","trackIndex":43,"star":false,"start":false},{"row":8,"col":5,"kind":"track","trackIndex":44,"star":false,"start":false},{"row":8,"col":4,"kind":"track","trackIndex":45,"star":false,"start":false},{"row":8,"col":3,"kind":"track","trackIndex":46,"star":false,"start":false},{"row":8,"col":2,"kind":"track","trackIndex":47,"star":true,"start":false},{"row":8,"col":1,"kind":"track","trackIndex":48,"star":false,"start":false},{"row":8,"col":0,"kind":"track","trackIndex":49,"star":false,"start":false},{"row":7,"col":0,"kind":"track","trackIndex":50,"star":false,"start":false},{"row":6,"col":0,"kind":"track","trackIndex":51,"star":false,"start":false}],"startIndex":{"red":0,"green":13,"yellow":26,"blue":39},"trackLength":52,"lastTrack":50,"done":56,"yardCorners":{"red":[0,0],"green":[0,9],"yellow":[9,9],"blue":[9,0]}}</script>
+  <script>
+(function () {
+  var post = function () {
+    return undefined;
+  };
+  var built = false;
+  var prevById = {};
+  var animating = {};
+  var pendingGame = null;
+
+  var STEP_MS = 160;
+
+  /** High: virtual 5×5 spots inside the nest — (2,2), (2,4), (4,2), (4,4). */
+  var YARD_SPOTS_HIGH = [
+    { left: '30%', top: '30%' },
+    { left: '70%', top: '30%' },
+    { left: '30%', top: '70%' },
+    { left: '70%', top: '70%' },
+  ];
+
+  /** Low stealth: one centered row of four dots. */
+  var YARD_SPOTS_LOW = [
+    { left: '20%', top: '50%' },
+    { left: '40%', top: '50%' },
+    { left: '60%', top: '50%' },
+    { left: '80%', top: '50%' },
+  ];
+
+  var boardMeta = null;
+
+  function isHighGui() {
+    return document.body.classList.contains('gui-high');
+  }
+
+  function yardSpots() {
+    return isHighGui() ? YARD_SPOTS_HIGH : YARD_SPOTS_LOW;
+  }
+
+  function layout() {
+    if (!boardMeta) {
+      boardMeta = boardData();
+    }
+    if (!boardMeta) {
+      throw new Error('Ludo board payload missing');
+    }
+    return boardMeta;
+  }
+
+  function bind(send) {
+    post = send;
+    var roll = document.getElementById('ludoRoll');
+    var leave = document.getElementById('ludoLeave');
+    if (roll && !roll.dataset.bound) {
+      roll.dataset.bound = '1';
+      roll.addEventListener('click', function () {
+        post({ type: 'action', action: { type: 'roll' } });
+      });
+    }
+    if (leave && !leave.dataset.bound) {
+      leave.dataset.bound = '1';
+      leave.addEventListener('click', function () {
+        post({ type: 'leave' });
+      });
+    }
+  }
+
+  function boardData() {
+    var node = document.getElementById('ludo-board');
+    if (!node || !node.textContent) {
+      return null;
+    }
+    try {
+      var parsed = JSON.parse(node.textContent);
+      if (parsed && Array.isArray(parsed.cells) && parsed.startIndex && parsed.yardCorners) {
+        return parsed;
+      }
+      return null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function isYardNest(cell) {
+    var corners = layout().yardCorners;
+    if (cell.kind !== 'yard' || !cell.color || !corners[cell.color]) {
+      return false;
+    }
+    var corner = corners[cell.color];
+    var localRow = cell.row - corner[0];
+    var localCol = cell.col - corner[1];
+    return localRow >= 1 && localRow <= 4 && localCol >= 1 && localCol <= 4;
+  }
+
+  function samePlace(a, b) {
+    return a && b && a.zone === b.zone && a.index === b.index && a.color === b.color;
+  }
+
+  function progressOf(token) {
+    var meta = layout();
+    if (token.zone === 'yard') {
+      return -1;
+    }
+    if (token.zone === 'track') {
+      return (token.index - meta.startIndex[token.color] + meta.trackLength) % meta.trackLength;
+    }
+    if (token.zone === 'home') {
+      return 51 + token.index;
+    }
+    return meta.done;
+  }
+
+  function viewAt(color, progress) {
+    var meta = layout();
+    if (progress < 0) {
+      return { zone: 'yard', index: 0, color: color };
+    }
+    if (progress <= meta.lastTrack) {
+      return {
+        zone: 'track',
+        index: (meta.startIndex[color] + progress) % meta.trackLength,
+        color: color,
+      };
+    }
+    if (progress < meta.done) {
+      return { zone: 'home', index: progress - 51, color: color };
+    }
+    return { zone: 'done', index: null, color: color };
+  }
+
+  /** Intermediate board views from previous progress to next (inclusive of destination). */
+  function pathViews(fromToken, toToken) {
+    var from = progressOf(fromToken);
+    var to = progressOf(toToken);
+    var color = toToken.color;
+    var steps = [];
+
+    if (from < 0 && to >= 0) {
+      steps.push(viewAt(color, 0));
+      return steps;
+    }
+
+    /* Capture / sent home: fly back without stepping the whole track. */
+    if (to < 0 && from >= 0) {
+      steps.push({
+        zone: 'yard',
+        index: toToken.index,
+        color: color,
+      });
+      return steps;
+    }
+
+    if (to === from) {
+      return steps;
+    }
+
+    var dir = to > from ? 1 : -1;
+    for (var p = from + dir; dir > 0 ? p <= to : p >= to; p += dir) {
+      steps.push(viewAt(color, p));
+    }
+    return steps;
+  }
+
+  function ensureBoard() {
+    var board = document.getElementById('ludoBoard');
+    if (!board || built) {
+      return board;
+    }
+    var meta = layout();
+    meta.cells.forEach(function (cell) {
+      var el = document.createElement('div');
+      el.className = 'ludo-cell ' + cell.kind;
+      if (cell.color) {
+        el.classList.add(cell.color);
+      }
+      if (cell.star) {
+        el.classList.add('star');
+      }
+      if (cell.start) {
+        el.classList.add('start');
+      }
+      if (isYardNest(cell)) {
+        el.classList.add('nest');
+      }
+      el.style.gridRow = String(cell.row + 1);
+      el.style.gridColumn = String(cell.col + 1);
+      el.dataset.kind = cell.kind;
+      if (cell.trackIndex !== undefined) {
+        el.dataset.track = String(cell.trackIndex);
+      }
+      if (cell.homeStep !== undefined) {
+        el.dataset.home = String(cell.homeStep);
+      }
+      if (cell.yardSlot !== undefined) {
+        el.dataset.slot = String(cell.yardSlot);
+      }
+      if (cell.color) {
+        el.dataset.color = cell.color;
+      }
+      board.appendChild(el);
+    });
+    Object.keys(meta.yardCorners).forEach(function (color) {
+      var corner = meta.yardCorners[color];
+      var nest = document.createElement('div');
+      nest.className = 'ludo-yard-nest ' + color;
+      nest.dataset.color = color;
+      nest.setAttribute('aria-hidden', 'true');
+      nest.style.gridRow = corner[0] + 2 + ' / span 4';
+      nest.style.gridColumn = corner[1] + 2 + ' / span 4';
+      YARD_SPOTS_HIGH.forEach(function (spot, slot) {
+        var pad = document.createElement('div');
+        pad.className = 'ludo-yard-pad';
+        pad.dataset.slot = String(slot);
+        pad.style.left = spot.left;
+        pad.style.top = spot.top;
+        nest.appendChild(pad);
+      });
+      board.appendChild(nest);
+    });
+    var homeTri = document.createElement('div');
+    homeTri.className = 'ludo-home-tri';
+    homeTri.setAttribute('aria-hidden', 'true');
+    board.appendChild(homeTri);
+    built = true;
+    return board;
+  }
+
+  function findCell(board, token) {
+    var cells = board.querySelectorAll('.ludo-cell');
+    for (var i = 0; i < cells.length; i++) {
+      var cell = cells[i];
+      if (
+        token.zone === 'done' &&
+        cell.dataset.kind === 'center' &&
+        cell.style.gridRow === '8' &&
+        cell.style.gridColumn === '8'
+      ) {
+        return cell;
+      }
+      if (token.zone === 'track' && cell.dataset.kind === 'track' && cell.dataset.track === String(token.index)) {
+        return cell;
+      }
+      if (
+        token.zone === 'home' &&
+        cell.dataset.kind === 'home' &&
+        cell.dataset.color === token.color &&
+        cell.dataset.home === String(token.index)
+      ) {
+        return cell;
+      }
+      if (
+        token.zone === 'yard' &&
+        cell.dataset.kind === 'yard' &&
+        cell.dataset.color === token.color &&
+        cell.dataset.slot === String(token.index)
+      ) {
+        return cell;
+      }
+    }
+    return null;
+  }
+
+  function findYardNest(board, color) {
+    return board.querySelector('.ludo-yard-nest.' + color);
+  }
+
+  /**
+   * Absolute tokens are positioned against the board's padding box.
+   * Use clientWidth/Height (not getBoundingClientRect) so a thick board
+   * border does not shift the path off the grid cells.
+   */
+  function cellSize(board) {
+    return {
+      w: board.clientWidth / 15,
+      h: board.clientHeight / 15,
+    };
+  }
+
+  function cellCenter(board, row, col) {
+    var size = cellSize(board);
+    return {
+      x: (col + 0.5) * size.w,
+      y: (row + 0.5) * size.h,
+      row: row,
+      col: col,
+    };
+  }
+
+  function gridPosForView(board, token) {
+    if (token.zone === 'yard') {
+      return null;
+    }
+    var cell = findCell(board, token);
+    if (!cell) {
+      return null;
+    }
+    return {
+      row: parseInt(cell.style.gridRow, 10) - 1,
+      col: parseInt(cell.style.gridColumn, 10) - 1,
+    };
+  }
+
+  function boardPoint(board, token) {
+    if (token.zone === 'yard') {
+      var spot = yardSpots()[token.index];
+      var corner = layout().yardCorners[token.color];
+      if (!spot || !corner) {
+        return null;
+      }
+      var size = cellSize(board);
+      /* Nest covers local 1–4 of the 6×6 yard. */
+      var nestLeft = (corner[1] + 1) * size.w;
+      var nestTop = (corner[0] + 1) * size.h;
+      var nestW = 4 * size.w;
+      var nestH = 4 * size.h;
+      return {
+        x: nestLeft + nestW * (parseFloat(spot.left) / 100),
+        y: nestTop + nestH * (parseFloat(spot.top) / 100),
+        row: null,
+        col: null,
+      };
+    }
+    var grid = gridPosForView(board, token);
+    if (!grid) {
+      return null;
+    }
+    return cellCenter(board, grid.row, grid.col);
+  }
+
+  /**
+   * Track corners are diagonally adjacent cells. Straight lerps cut through
+   * yards/center — insert the shared grid-line corner so motion is axis-aligned.
+   */
+  function withCornerKnees(board, points) {
+    var size = cellSize(board);
+    var out = [];
+    for (var i = 0; i < points.length; i++) {
+      var cur = points[i];
+      if (!cur) {
+        continue;
+      }
+      if (out.length) {
+        var prev = out[out.length - 1];
+        if (
+          prev.row != null &&
+          cur.row != null &&
+          prev.row !== cur.row &&
+          prev.col !== cur.col
+        ) {
+          out.push({
+            x: Math.max(prev.col, cur.col) * size.w,
+            y: Math.max(prev.row, cur.row) * size.h,
+            row: null,
+            col: null,
+          });
+        }
+      }
+      out.push(cur);
+    }
+    return out;
+  }
+
+  function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  function pointOnPath(points, t) {
+    if (points.length === 1) {
+      return points[0];
+    }
+    var segs = [];
+    var total = 0;
+    for (var i = 0; i < points.length - 1; i++) {
+      var dx = points[i + 1].x - points[i].x;
+      var dy = points[i + 1].y - points[i].y;
+      var len = Math.sqrt(dx * dx + dy * dy) || 1;
+      segs.push({ len: len, from: points[i], to: points[i + 1] });
+      total += len;
+    }
+    var dist = Math.max(0, Math.min(1, t)) * total;
+    for (var s = 0; s < segs.length; s++) {
+      if (dist <= segs[s].len || s === segs.length - 1) {
+        var u = segs[s].len ? dist / segs[s].len : 1;
+        return {
+          x: segs[s].from.x + (segs[s].to.x - segs[s].from.x) * u,
+          y: segs[s].from.y + (segs[s].to.y - segs[s].from.y) * u,
+        };
+      }
+      dist -= segs[s].len;
+    }
+    return points[points.length - 1];
+  }
+
+  function cancelAnimation(id) {
+    var entry = animating[id];
+    if (!entry) {
+      return;
+    }
+    if (entry.el && entry.el.parentNode) {
+      entry.el.remove();
+    }
+    delete animating[id];
+  }
+
+  function cancelAnimations(ids) {
+    (ids || []).forEach(function (id) {
+      cancelAnimation(id);
+    });
+  }
+
+  function animateToken(board, token, fromToken, onDone) {
+    var startPt = boardPoint(board, fromToken);
+    var views = pathViews(fromToken, token);
+    var raw = [startPt];
+    views.forEach(function (step) {
+      var view = step.zone === 'yard' ? { zone: 'yard', index: token.index, color: token.color } : step;
+      raw.push(boardPoint(board, view));
+    });
+    var points = withCornerKnees(board, raw.filter(Boolean));
+    if (points.length < 2) {
+      onDone();
+      return;
+    }
+
+    var el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'ludo-token moving ' + token.color;
+    el.disabled = true;
+    var size = cellSize(board);
+    el.style.width = size.w * 0.58 + 'px';
+    el.style.height = size.h * 0.58 + 'px';
+    el.style.left = points[0].x + 'px';
+    el.style.top = points[0].y + 'px';
+    el.style.transform = 'translate(-50%, -50%)';
+    board.appendChild(el);
+
+    var duration = Math.max(STEP_MS, (points.length - 1) * STEP_MS);
+    var t0 = performance.now();
+    animating[token.id] = { el: el };
+
+    function frame(now) {
+      if (!animating[token.id] || animating[token.id].el !== el) {
+        return;
+      }
+      var t = Math.min(1, (now - t0) / duration);
+      var pos = pointOnPath(points, easeInOutCubic(t));
+      el.style.left = pos.x + 'px';
+      el.style.top = pos.y + 'px';
+      if (t < 1) {
+        requestAnimationFrame(frame);
+        return;
+      }
+      el.remove();
+      delete animating[token.id];
+      onDone();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function placeToken(parent, token, legal, spot) {
+    var el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'ludo-token ' + token.color;
+    el.dataset.tokenId = token.id;
+    if (spot) {
+      el.classList.add('yard-spot');
+      el.style.left = spot.left;
+      el.style.top = spot.top;
+      el.style.transform = 'translate(-50%, -50%)';
+    } else {
+      var count = parent.querySelectorAll('.ludo-token:not(.moving)').length;
+      el.style.transform = 'translate(calc(-50% + ' + count * 4 + 'px), calc(-50% + ' + count * 3 + 'px))';
+    }
+    if (legal[token.id]) {
+      el.classList.add('legal');
+      el.addEventListener('click', function () {
+        post({ type: 'action', action: { type: 'move', tokenId: token.id } });
+      });
+    } else {
+      el.disabled = true;
+    }
+    parent.appendChild(el);
+  }
+
+  function paintStatic(board, game, legal, skipIds) {
+    skipIds = skipIds || {};
+    board.querySelectorAll('.ludo-token:not(.moving)').forEach(function (token) {
+      token.remove();
+    });
+    (game.tokens || []).forEach(function (token) {
+      if (animating[token.id] || skipIds[token.id]) {
+        return;
+      }
+      if (token.zone === 'yard') {
+        var nest = findYardNest(board, token.color);
+        var spot = yardSpots()[token.index];
+        if (!nest || !spot) {
+          return;
+        }
+        placeToken(nest, token, legal, spot);
+        return;
+      }
+      var cell = findCell(board, token);
+      if (!cell) {
+        return;
+      }
+      placeToken(cell, token, legal, null);
+    });
+  }
+
+  function updateChrome(game) {
+    var dice = document.getElementById('ludoDice');
+    var status = document.getElementById('ludoStatus');
+    var roll = document.getElementById('ludoRoll');
+    var mine = game.currentPlayerId === game.yourPlayerId && !game.winnerId;
+    if (roll) {
+      /* Server phase alone gates Roll — token flight is cosmetic. Locking on
+         animating left bonus rolls (home / capture / 6) unusable if the
+         animation was cancelled without onDone. */
+      roll.disabled = !mine || game.awaiting !== 'roll';
+    }
+    if (dice) {
+      dice.textContent = game.dice ? 'Dice ' + game.dice : 'Dice';
+    }
+    if (status) {
+      var line = game.status || '';
+      if (game.turnDeadline && !game.winnerId) {
+        var left = Math.max(0, Math.ceil((game.turnDeadline - Date.now()) / 1000));
+        line += (line ? ' · ' : '') + left + 's';
+      }
+      status.textContent = line;
+    }
+  }
+
+  function snapshot(token) {
+    return {
+      id: token.id,
+      playerId: token.playerId,
+      color: token.color,
+      zone: token.zone,
+      index: token.index,
+    };
+  }
+
+  function paintBlockades(board, game) {
+    var blocked = {};
+    (game.blockedTrackIndexes || []).forEach(function (index) {
+      blocked[String(index)] = true;
+    });
+    board.querySelectorAll('.ludo-cell.track').forEach(function (cell) {
+      cell.classList.toggle('blockade', !!blocked[cell.dataset.track]);
+    });
+  }
+
+  function render(game) {
+    var board = ensureBoard();
+    if (!board || !game) {
+      return;
+    }
+    pendingGame = game;
+    var legalIds = game.legalTokenIds || [];
+    var legal = {};
+    legalIds.forEach(function (id) {
+      legal[id] = true;
+    });
+    paintBlockades(board, game);
+
+    /* Move phase needs clickable tokens — cancel ghosts that would hide them. */
+    if (game.awaiting === 'move' && legalIds.length) {
+      cancelAnimations(legalIds);
+    }
+
+    var nextById = {};
+    (game.tokens || []).forEach(function (token) {
+      nextById[token.id] = snapshot(token);
+    });
+
+    var movers = [];
+    Object.keys(nextById).forEach(function (id) {
+      var next = nextById[id];
+      var prev = prevById[id];
+      if (prev && !samePlace(prev, next) && !animating[id]) {
+        movers.push({ from: prev, to: next });
+      }
+    });
+
+    /* Animating ids skipped as movers: snap them to the latest server place. */
+    Object.keys(animating).forEach(function (id) {
+      var next = nextById[id];
+      var prev = prevById[id];
+      if (!next) {
+        cancelAnimation(id);
+        return;
+      }
+      if (prev && !samePlace(prev, next) && !movers.some(function (move) {
+        return move.to.id === id;
+      })) {
+        cancelAnimation(id);
+      }
+    });
+
+    if (movers.length) {
+      var skipIds = {};
+      movers.forEach(function (move) {
+        skipIds[move.to.id] = true;
+      });
+      paintStatic(board, game, legal, skipIds);
+      updateChrome(game);
+      var remaining = movers.length;
+      movers.forEach(function (move) {
+        animateToken(board, move.to, move.from, function () {
+          remaining -= 1;
+          if (remaining <= 0 && pendingGame) {
+            paintStatic(board, pendingGame, legalFrom(pendingGame));
+            updateChrome(pendingGame);
+          }
+        });
+      });
+      prevById = nextById;
+      return;
+    }
+
+    prevById = nextById;
+    paintStatic(board, game, legal);
+    updateChrome(game);
+  }
+
+  function legalFrom(game) {
+    var legal = {};
+    (game.legalTokenIds || []).forEach(function (id) {
+      legal[id] = true;
+    });
+    return legal;
+  }
+
+  window.AnshinLudo = {
+    bind: bind,
+    render: render,
+  };
+})();
+
+</script>
+  <script>
+(function () {
+  var post = function () {
+    return undefined;
+  };
+  var selected = {};
+  var declaredRank = 'Ace';
+  var lastChallengeKey = '';
+  var pickingChallenge = false;
+  var ranks = [
+    'Ace',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '10',
+    'Jack',
+    'Queen',
+    'King',
+  ];
+
+  function shortRankLabel(rank) {
+    if (rank === 'Ace') return 'A';
+    if (rank === 'Jack') return 'J';
+    if (rank === 'Queen') return 'Q';
+    if (rank === 'King') return 'K';
+    return String(rank);
+  }
+
+  function ensureRankButtons() {
+    var root = document.getElementById('bluffRanks');
+    if (!root || root.dataset.filled) {
+      return root;
+    }
+    root.dataset.filled = '1';
+    ranks.forEach(function (value) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'bluff-rank-btn';
+      btn.dataset.rank = value;
+      btn.title = value;
+      btn.textContent = shortRankLabel(value);
+      btn.addEventListener('click', function (event) {
+        var game = window.__anshinBluffGame;
+        var lockedRank = resolveLockedRank(game);
+        // Rank is fixed for the whole pile until a challenge clears it.
+        if (lockedRank || btn.disabled) {
+          if (event && event.preventDefault) {
+            event.preventDefault();
+          }
+          return;
+        }
+        declaredRank = value;
+        var myTurn =
+          !!game &&
+          game.currentPlayerId === game.yourPlayerId &&
+          !game.winnerId;
+        paintRankButtons(myTurn, null);
+        if (game) {
+          render(game);
+        }
+      });
+      root.appendChild(btn);
+    });
+    return root;
+  }
+
+  function resolveLockedRank(game) {
+    if (!game) {
+      return null;
+    }
+    // Cards still in the upper pile → rank stays frozen for every player
+    // until a challenge takes those cards.
+    if (!(game.discardCount > 0)) {
+      return null;
+    }
+    if (typeof game.claimedRank === 'string' && game.claimedRank) {
+      return game.claimedRank;
+    }
+    if (game.lastPlay && typeof game.lastPlay.declaredRank === 'string') {
+      return game.lastPlay.declaredRank;
+    }
+    return null;
+  }
+
+  function paintRankButtons(enabled, lockedRank, claimMode) {
+    var root = ensureRankButtons();
+    var lockEl = document.getElementById('bluffRankLock');
+    if (!root) {
+      return;
+    }
+    if (lockedRank) {
+      declaredRank = lockedRank;
+      // Hide the chooser entirely so nobody (including the starter) can pick
+      // another rank while the pile still has cards.
+      root.classList.add('hidden');
+      root.classList.add('bluff-ranks--locked');
+      root.setAttribute('aria-hidden', 'true');
+      var lockedButtons = root.querySelectorAll('.bluff-rank-btn');
+      for (var i = 0; i < lockedButtons.length; i++) {
+        lockedButtons[i].disabled = true;
+        lockedButtons[i].tabIndex = -1;
+      }
+      if (lockEl) {
+        lockEl.classList.remove('hidden');
+        lockEl.textContent =
+          claimMode === 'next'
+            ? 'Must claim ' + lockedRank + ' — next rank in sequence (or call bluff)'
+            : 'Rank locked: ' +
+              lockedRank +
+              ' — call bluff to take the pile before changing rank';
+      }
+      return;
+    }
+
+    root.classList.remove('hidden');
+    root.classList.remove('bluff-ranks--locked');
+    root.removeAttribute('aria-hidden');
+    if (lockEl) {
+      lockEl.classList.add('hidden');
+      lockEl.textContent = '';
+    }
+
+    var buttons = root.querySelectorAll('.bluff-rank-btn');
+    for (var j = 0; j < buttons.length; j++) {
+      var btn = buttons[j];
+      var rank = btn.dataset.rank;
+      var active = rank === declaredRank;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      btn.disabled = !enabled;
+      btn.tabIndex = enabled ? 0 : -1;
+      if (!enabled) {
+        btn.setAttribute('aria-disabled', 'true');
+      } else {
+        btn.removeAttribute('aria-disabled');
+      }
+    }
+  }
+
+  function hidePick() {
+    pickingChallenge = false;
+    var pick = document.getElementById('bluffPick');
+    if (pick) {
+      pick.classList.add('hidden');
+    }
+  }
+
+  function openPick(game) {
+    var pick = document.getElementById('bluffPick');
+    var msg = document.getElementById('bluffPickMsg');
+    var cards = document.getElementById('bluffPickCards');
+    if (!pick || !cards || !game || !game.lastPlay) {
+      return;
+    }
+    var ids = game.lastPlay.challengeCardIds || [];
+    if (!ids.length) {
+      return;
+    }
+    pickingChallenge = true;
+    if (msg) {
+      msg.textContent =
+        'Pick one of ' +
+        game.lastPlay.playerName +
+        "'s " +
+        game.lastPlay.quantity +
+        ' claimed ' +
+        game.lastPlay.declaredRank +
+        (game.lastPlay.quantity === 1 ? '' : 's') +
+        ' to check.';
+    }
+    cards.innerHTML = '';
+    ids.forEach(function (cardId, index) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'bluff-card-back bluff-pick-target';
+      btn.dataset.cardId = cardId;
+      btn.setAttribute('aria-label', 'Check card ' + (index + 1));
+      btn.textContent = '·';
+      btn.addEventListener('click', function () {
+        hidePick();
+        post({
+          type: 'action',
+          action: { type: 'challenge', cardId: cardId },
+        });
+      });
+      cards.appendChild(btn);
+    });
+    pick.classList.remove('hidden');
+  }
+
+  function bind(send) {
+    post = send;
+    var play = document.getElementById('bluffPlay');
+    var pass = document.getElementById('bluffPass');
+    var challenge = document.getElementById('bluffChallenge');
+    var leave = document.getElementById('bluffLeave');
+    var close = document.getElementById('bluffRevealClose');
+    var pickCancel = document.getElementById('bluffPickCancel');
+
+    ensureRankButtons();
+    paintRankButtons(false);
+
+    if (play && !play.dataset.bound) {
+      play.dataset.bound = '1';
+      play.addEventListener('click', function () {
+        var ids = Object.keys(selected);
+        if (!ids.length) {
+          return;
+        }
+        var game = window.__anshinBluffGame;
+        var lockedRank = resolveLockedRank(game);
+        var rank = lockedRank || declaredRank;
+        hidePick();
+        post({
+          type: 'action',
+          action: { type: 'play', cardIds: ids, rank: rank },
+        });
+        selected = {};
+      });
+    }
+
+    if (pass && !pass.dataset.bound) {
+      pass.dataset.bound = '1';
+      pass.addEventListener('click', function () {
+        selected = {};
+        hidePick();
+        post({ type: 'action', action: { type: 'pass' } });
+      });
+    }
+
+    if (challenge && !challenge.dataset.bound) {
+      challenge.dataset.bound = '1';
+      challenge.addEventListener('click', function () {
+        var game = window.__anshinBluffGame;
+        if (!game || !game.canChallenge) {
+          return;
+        }
+        openPick(game);
+      });
+    }
+
+    if (pickCancel && !pickCancel.dataset.bound) {
+      pickCancel.dataset.bound = '1';
+      pickCancel.addEventListener('click', function () {
+        hidePick();
+      });
+    }
+
+    if (leave && !leave.dataset.bound) {
+      leave.dataset.bound = '1';
+      leave.addEventListener('click', function () {
+        hidePick();
+        post({ type: 'leave' });
+      });
+    }
+
+    if (close && !close.dataset.bound) {
+      close.dataset.bound = '1';
+      close.addEventListener('click', function () {
+        var reveal = document.getElementById('bluffReveal');
+        if (reveal) {
+          reveal.classList.add('hidden');
+        }
+      });
+    }
+  }
+
+  function suitSymbol(suit) {
+    if (suit === 'hearts') return '♥';
+    if (suit === 'diamonds') return '♦';
+    if (suit === 'clubs') return '♣';
+    if (suit === 'spades') return '♠';
+    return '';
+  }
+
+  function shortRank(rank) {
+    return shortRankLabel(rank);
+  }
+
+  function isRed(suit) {
+    return suit === 'hearts' || suit === 'diamonds';
+  }
+
+  function faceCard(card, interactive) {
+    var el = document.createElement(interactive ? 'button' : 'div');
+    if (interactive) {
+      el.type = 'button';
+    }
+    el.className = 'bluff-card' + (isRed(card.suit) ? ' red' : '');
+    el.dataset.cardId = card.id;
+    el.innerHTML =
+      '<span>' +
+      shortRank(card.rank) +
+      '</span><span>' +
+      suitSymbol(card.suit) +
+      '</span>';
+    if (interactive) {
+      if (selected[card.id]) {
+        el.classList.add('selected');
+      }
+      el.addEventListener('click', function () {
+        if (selected[card.id]) {
+          delete selected[card.id];
+        } else {
+          selected[card.id] = true;
+        }
+        var game = window.__anshinBluffGame;
+        if (game) {
+          render(game);
+        }
+      });
+    }
+    return el;
+  }
+
+  function backCard() {
+    var el = document.createElement('div');
+    el.className = 'bluff-card-back';
+    el.setAttribute('aria-hidden', 'true');
+    el.textContent = '·';
+    return el;
+  }
+
+  function challengeKey(result) {
+    if (!result) {
+      return '';
+    }
+    return [
+      result.challengerId,
+      result.accusedId,
+      result.declaredRank,
+      result.quantity,
+      result.wasBluff ? '1' : '0',
+      result.collectorId,
+      (result.revealedCards || [])
+        .map(function (card) {
+          return card.id;
+        })
+        .join(','),
+    ].join('|');
+  }
+
+  function syncSelection(hand) {
+    var ids = {};
+    (hand || []).forEach(function (card) {
+      ids[card.id] = true;
+    });
+    Object.keys(selected).forEach(function (id) {
+      if (!ids[id]) {
+        delete selected[id];
+      }
+    });
+  }
+
+  function renderOpponents(game) {
+    var root = document.getElementById('bluffOpponents');
+    if (!root) {
+      return;
+    }
+    root.innerHTML = '';
+    (game.opponents || []).forEach(function (opponent) {
+      var seat = document.createElement('div');
+      seat.className = 'bluff-seat';
+      if (opponent.id === game.currentPlayerId && !game.winnerId) {
+        seat.classList.add('your-turn');
+      }
+      if (opponent.connected === false) {
+        seat.classList.add('offline');
+      }
+      seat.innerHTML =
+        '<span class="bluff-seat-name"></span><span class="bluff-seat-count"></span>';
+      seat.querySelector('.bluff-seat-name').textContent = opponent.name;
+      seat.querySelector('.bluff-seat-count').textContent =
+        opponent.cardCount + (opponent.cardCount === 1 ? ' card' : ' cards');
+      root.appendChild(seat);
+    });
+  }
+
+  function renderPile(game) {
+    var pile = document.getElementById('bluffPile');
+    var claim = document.getElementById('bluffClaim');
+    if (!pile) {
+      return;
+    }
+    pile.innerHTML = '';
+    var count = Math.min(game.discardCount || 0, 8);
+    for (var i = 0; i < count; i++) {
+      pile.appendChild(backCard());
+    }
+    if ((game.discardCount || 0) > 8) {
+      var more = document.createElement('span');
+      more.className = 'bluff-seat-count';
+      more.textContent = '+' + (game.discardCount - 8);
+      pile.appendChild(more);
+    }
+    if (claim) {
+      if (game.lastPlay) {
+        claim.textContent =
+          game.lastPlay.playerName +
+          ' claims ' +
+          game.lastPlay.quantity +
+          '× ' +
+          game.lastPlay.declaredRank;
+      } else if (game.discardCount) {
+        claim.textContent = game.discardCount + ' cards in the pile';
+      } else {
+        claim.textContent = 'Empty pile · declare any rank';
+      }
+    }
+  }
+
+  function renderHand(game, myTurn) {
+    var handEl = document.getElementById('bluffHand');
+    var youCount = document.getElementById('bluffYouCount');
+    var youLabel = document.getElementById('bluffYouLabel');
+    if (!handEl) {
+      return;
+    }
+    handEl.innerHTML = '';
+    syncSelection(game.hand);
+    (game.hand || []).forEach(function (card) {
+      handEl.appendChild(faceCard(card, myTurn && !game.winnerId));
+    });
+    if (youCount) {
+      youCount.textContent = (game.hand || []).length + ' cards';
+    }
+    if (youLabel) {
+      youLabel.textContent = myTurn && !game.winnerId ? 'You · your turn' : 'You';
+    }
+  }
+
+  function renderReveal(game) {
+    var reveal = document.getElementById('bluffReveal');
+    var title = document.getElementById('bluffRevealTitle');
+    var msg = document.getElementById('bluffRevealMsg');
+    var cards = document.getElementById('bluffRevealCards');
+    if (!reveal || !game.lastChallenge) {
+      if (reveal && !game.lastChallenge) {
+        reveal.classList.add('hidden');
+      }
+      return;
+    }
+    var key = challengeKey(game.lastChallenge);
+    if (key !== lastChallengeKey) {
+      lastChallengeKey = key;
+      hidePick();
+      reveal.classList.remove('hidden');
+    }
+    if (title) {
+      title.textContent = game.lastChallenge.wasBluff ? 'Bluff caught' : 'Wrong challenge';
+    }
+    if (msg) {
+      msg.textContent =
+        game.lastChallenge.message +
+        ' Checked 1 of ' +
+        game.lastChallenge.quantity +
+        ' claimed ' +
+        game.lastChallenge.declaredRank +
+        (game.lastChallenge.quantity === 1 ? '' : 's') +
+        '.';
+    }
+    if (cards) {
+      cards.innerHTML = '';
+      (game.lastChallenge.revealedCards || []).forEach(function (card) {
+        cards.appendChild(faceCard(card, false));
+      });
+    }
+  }
+
+  function render(game) {
+    window.__anshinBluffGame = game;
+    if (!game) {
+      return;
+    }
+    var myTurn = game.currentPlayerId === game.yourPlayerId && !game.winnerId;
+    var lockedRank = resolveLockedRank(game);
+    if (!game.canChallenge && pickingChallenge) {
+      hidePick();
+    }
+    renderOpponents(game);
+    renderPile(game);
+    paintRankButtons(myTurn, lockedRank, game.claimMode);
+    renderHand(game, myTurn);
+    renderReveal(game);
+
+    var play = document.getElementById('bluffPlay');
+    var pass = document.getElementById('bluffPass');
+    var challenge = document.getElementById('bluffChallenge');
+    var status = document.getElementById('bluffStatus');
+    var tableStatus = document.getElementById('bluffTableStatus');
+    var selectedLine = document.getElementById('bluffSelected');
+    var selectedCount = Object.keys(selected).length;
+
+    if (play) {
+      play.disabled = !myTurn || selectedCount < 1;
+      play.textContent = selectedCount ? 'Play cards (' + selectedCount + ')' : 'Play cards';
+    }
+    if (pass) {
+      pass.disabled = !myTurn;
+    }
+    if (challenge) {
+      challenge.disabled = !game.canChallenge;
+    }
+    if (selectedLine) {
+      var parts = [];
+      if (selectedCount) {
+        parts.push('Selected: ' + selectedCount);
+      }
+      if (lockedRank) {
+        parts.push('Rank locked: ' + lockedRank + ' (challenge to change)');
+      } else {
+        parts.push('Rank: ' + declaredRank);
+      }
+      selectedLine.textContent = parts.join(' · ');
+    }
+    if (status) {
+      status.textContent = game.status || '';
+    }
+    if (tableStatus) {
+      if (game.winnerId) {
+        tableStatus.textContent = game.loserId ? 'Last player loses' : 'Game over';
+      } else {
+        tableStatus.textContent = myTurn ? 'Your move' : 'Waiting…';
+      }
+    }
+  }
+
+  window.AnshinBluff = {
+    bind: bind,
+    render: render,
+  };
+})();
+
+</script>
+  <script>
+/*
+ * Standalone join page (dist/anshin-join.html). No server is needed: this script
+ * opens the room's WebSocket directly. It stands in for the VS Code webview API and
+ * keeps the same UI state as src/sidebar/state.ts, so uno.js, ludo.js and bluff.js
+ * render it unchanged. Join only: hosting stays in VS Code.
+ */
+(function () {
+  var DEFAULT_GAME = 'uno';
+  var CONNECT_TIMEOUT_MS = 8000;
+  var MENU_STATUS = 'Paste the Join URL from the host, enter your name, then Join room.';
+
+  var socket = null;
+  var connectTimer = null;
+  var state = createMenuState();
+
+  function createMenuState(status, guiMode) {
+    return {
+      screen: 'menu',
+      guiMode: guiMode || 'low',
+      status: status || MENU_STATUS,
+      joinUrl: '',
+      joinUrls: [],
+      lobbyPlayers: [],
+      canStart: false,
+      youAreHost: false,
+      yourPlayerId: '',
+      yourName: '',
+      selectedGame: DEFAULT_GAME,
+      gameId: null,
+      game: null,
+    };
+  }
+
+  function publish() {
+    window.postMessage(
+      {
+        type: 'ui',
+        state: Object.assign({}, state, { defaultServerUrl: '', extensionVersion: '' }),
+      },
+      '*'
+    );
+  }
+
+  function setStatus(status) {
+    state = Object.assign({}, state, { status: status });
+    publish();
+  }
+
+  function resetMenu(status) {
+    state = createMenuState(status, state.guiMode);
+    publish();
+  }
+
+  function statusOf(value) {
+    return value && typeof value === 'object' && typeof value.status === 'string' ? value.status : '';
+  }
+
+  function lobbyStatus(youAreHost, joinUrl, joinUrls) {
+    if (!youAreHost) {
+      return 'Waiting for host to start…';
+    }
+    if (/127\.0\.0\.1|localhost/i.test(joinUrl)) {
+      return 'Lobby · only this machine can join (' + joinUrl + ')';
+    }
+    if (joinUrls.length > 1) {
+      return 'Lobby · share ' + joinUrl + '. If someone cannot connect, try the next address.';
+    }
+    return 'Lobby · share ' + joinUrl;
+  }
+
+  function isJoinUrl(raw) {
+    try {
+      var parsed = new URL(raw);
+      var token = parsed.searchParams.get('t');
+      return (parsed.protocol === 'ws:' || parsed.protocol === 'wss:') &&
+        parsed.hostname.length > 0 &&
+        Boolean(token && token.trim());
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /** Mirrors applyServerMessage() in src/sidebar/state.ts. */
+  function onRoomMessage(msg) {
+    if (!msg || typeof msg !== 'object') {
+      return;
+    }
+    switch (msg.type) {
+      case 'lobby': {
+        var joinUrls = msg.joinUrls && msg.joinUrls.length > 0 ? msg.joinUrls : [msg.joinUrl];
+        var away = (msg.players || [])
+          .filter(function (player) { return !player.connected; })
+          .map(function (player) { return player.name; });
+        state = Object.assign({}, state, {
+          screen: 'lobby',
+          lobbyPlayers: msg.players || [],
+          joinUrl: msg.joinUrl,
+          joinUrls: joinUrls,
+          canStart: msg.canStart,
+          youAreHost: msg.youAreHost,
+          yourPlayerId: msg.yourPlayerId,
+          selectedGame: msg.game || DEFAULT_GAME,
+          gameId: null,
+          game: null,
+          status: away.length
+            ? away.join(', ') + ' disconnected.'
+            : lobbyStatus(msg.youAreHost, msg.joinUrl, joinUrls),
+        });
+        break;
+      }
+      case 'state':
+        state = Object.assign({}, state, {
+          screen: 'game',
+          gameId: msg.game,
+          game: msg.state,
+          status: statusOf(msg.state),
+        });
+        break;
+      case 'gameOver': {
+        var game = msg.state;
+        var loserId = game && typeof game === 'object' && 'loserId' in game ? game.loserId : null;
+        var overStatus = loserId && statusOf(game) ? statusOf(game) : msg.winnerName + ' wins!';
+        state = Object.assign({}, state, {
+          screen: 'game',
+          gameId: msg.game,
+          game: game,
+          status: overStatus,
+        });
+        break;
+      }
+      case 'waiting':
+        state = Object.assign({}, state, {
+          screen: 'lobby',
+          lobbyPlayers: [],
+          canStart: false,
+          youAreHost: false,
+          gameId: null,
+          game: null,
+          status: msg.status,
+        });
+        break;
+      case 'error':
+        state = Object.assign({}, state, { status: msg.reason });
+        break;
+      case 'ended':
+        closeSocket();
+        resetMenu(msg.reason || 'The room ended.');
+        return;
+      default:
+        return;
+    }
+    publish();
+  }
+
+  function send(message) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(message));
+    }
+  }
+
+  function closeSocket() {
+    clearTimeout(connectTimer);
+    var ws = socket;
+    socket = null;
+    if (ws) {
+      try {
+        ws.close();
+      } catch (err) {
+        // ignore
+      }
+    }
+  }
+
+  function failJoin(text, ws) {
+    if (ws && socket === ws) {
+      closeSocket();
+    }
+    resetMenu(text);
+  }
+
+  function join(name, url) {
+    var trimmed = String(name || '').trim().slice(0, 24);
+    var joinUrl = String(url || '').trim();
+    if (!trimmed) {
+      setStatus('Enter a display name.');
+      return;
+    }
+    if (!isJoinUrl(joinUrl)) {
+      setStatus('URL must be ws:// or wss:// with a host (include ?t= from the host)');
+      return;
+    }
+
+    closeSocket();
+    state = Object.assign({}, state, {
+      yourName: trimmed,
+      youAreHost: false,
+      joinUrl: joinUrl,
+      status: 'Connecting…',
+    });
+    publish();
+
+    var ws;
+    try {
+      ws = new WebSocket(joinUrl);
+    } catch (err) {
+      failJoin('Join failed: ' + (err && err.message ? err.message : 'bad URL'));
+      return;
+    }
+    socket = ws;
+
+    var opened = false;
+    connectTimer = setTimeout(function () {
+      if (!opened) {
+        failJoin('Join failed: connection timed out.', ws);
+      }
+    }, CONNECT_TIMEOUT_MS);
+
+    ws.onopen = function () {
+      if (socket !== ws) {
+        return;
+      }
+      opened = true;
+      clearTimeout(connectTimer);
+      send({ type: 'join', name: trimmed });
+    };
+
+    ws.onmessage = function (event) {
+      if (socket !== ws) {
+        return;
+      }
+      var msg;
+      try {
+        msg = JSON.parse(event.data);
+      } catch (err) {
+        return;
+      }
+      onRoomMessage(msg);
+    };
+
+    ws.onerror = function () {
+      // onclose reports the failure
+    };
+
+    ws.onclose = function (event) {
+      clearTimeout(connectTimer);
+      if (socket !== ws) {
+        return;
+      }
+      socket = null;
+      if (!opened) {
+        resetMenu('Join failed: could not reach the room. Check the URL and that the host is online.');
+        return;
+      }
+      resetMenu('Disconnected' + (event && event.reason ? ': ' + event.reason : '.'));
+    };
+  }
+
+  /** Messages posted by the UI (uno.js, ludo.js, bluff.js). */
+  function onUiMessage(message) {
+    if (!message || typeof message !== 'object') {
+      return;
+    }
+    switch (message.type) {
+      case 'ready':
+        publish();
+        break;
+      case 'setGuiMode':
+        if (message.mode === 'ultra' || message.mode === 'low' || message.mode === 'high') {
+          state = Object.assign({}, state, { guiMode: message.mode });
+          publish();
+        }
+        break;
+      case 'host':
+        setStatus('This page can only join. Host the room from the Anshin sidebar in VS Code.');
+        break;
+      case 'join':
+        join(message.name, message.url);
+        break;
+      case 'action':
+        send({ type: 'action', action: message.action });
+        break;
+      case 'leave':
+        closeSocket();
+        resetMenu('Left the room.');
+        break;
+      default:
+        // setGame, startGame and copyJoinUrl are host-only or handled by the page.
+        break;
+    }
+  }
+
+  window.acquireVsCodeApi = function () {
+    return {
+      postMessage: onUiMessage,
+      getState: function () {
+        return undefined;
+      },
+      setState: function () {},
+    };
+  };
+})();
+
+</script>
+  <script>
+(function () {
+  const vscode = acquireVsCodeApi();
+
+  const menuScreen = document.getElementById('menuScreen');
+  const lobbyScreen = document.getElementById('lobbyScreen');
+  const gameScreen = document.getElementById('gameScreen');
+  const nameInput = document.getElementById('nameInput');
+  const urlInput = document.getElementById('urlInput');
+  const hostBtn = document.getElementById('hostBtn');
+  const hostLocalBtn = document.getElementById('hostLocalBtn');
+  const hostRemoteBtn = document.getElementById('hostRemoteBtn');
+  const serverUrlField = document.getElementById('serverUrlField');
+  const serverUrlInput = document.getElementById('serverUrlInput');
+  const joinBtn = document.getElementById('joinBtn');
+  const menuStatus = document.getElementById('menuStatus');
+  let hostMode = 'local';
+  let serverUrlTouched = false;
+  const joinUrlDisplay = document.getElementById('joinUrlDisplay');
+  const joinUrlList = document.getElementById('joinUrlList');
+  const copyUrlBtn = document.getElementById('copyUrlBtn');
+  const lobbyList = document.getElementById('lobbyList');
+  const startBtn = document.getElementById('startBtn');
+  const hostOpts = document.getElementById('hostOpts');
+  const gameSelect = document.getElementById('gameSelect');
+  const chosenGame = document.getElementById('chosenGame');
+  const cardsPerPlayerInput = document.getElementById('cardsPerPlayerInput');
+  const bluffDeckCountSelect = document.getElementById('bluffDeckCountSelect');
+  const guaranteeSpecialInput = document.getElementById('guaranteeSpecialInput');
+  const stackDrawsInput = document.getElementById('stackDrawsInput');
+  const blockadesInput = document.getElementById('blockadesInput');
+  const bluffClaimModeSelect = document.getElementById('bluffClaimModeSelect');
+  const ludoScreen = document.getElementById('ludoScreen');
+  const bluffScreen = document.getElementById('bluffScreen');
+  const leaveLobbyBtn = document.getElementById('leaveLobbyBtn');
+  const lobbyStatus = document.getElementById('lobbyStatus');
+  const discardEl = document.getElementById('discard');
+  const handEl = document.getElementById('hand');
+  const statusEl = document.getElementById('status');
+  const youCountEl = document.getElementById('youCount');
+  const youLabelEl = document.getElementById('youLabel');
+  const discardLabelEl = document.getElementById('discardLabel');
+  const colorLineEl = document.getElementById('colorLine');
+  const unoSaidLineEl = document.getElementById('unoSaidLine');
+  const appTitleEl = document.getElementById('appTitle');
+  const unoBtn = document.getElementById('unoBtn');
+  const catchBtn = document.getElementById('catchBtn');
+  const unoDockBar = document.querySelector('.uno-dock-bar');
+  const drawBtn = document.getElementById('drawBtn');
+  const leaveGameBtn = document.getElementById('leaveGameBtn');
+  const wildPicker = document.getElementById('wildPicker');
+  const cancelWildBtn = document.getElementById('cancelWildBtn');
+  const guiUltraBtn = document.getElementById('guiUltraBtn');
+  const guiLowBtn = document.getElementById('guiLowBtn');
+  const guiHighBtn = document.getElementById('guiHighBtn');
+  const seatSlots = Array.prototype.slice
+    .call(document.querySelectorAll('[data-seat-slot]'))
+    .sort(function (a, b) {
+      return (
+        Number(a.getAttribute('data-seat-slot')) -
+        Number(b.getAttribute('data-seat-slot'))
+      );
+    });
+
+  /** Local Uno UX only — same idea as AnshinLudo owning roll/move clicks. */
+  var selectedId = null;
+  var pendingWildCardId = null;
+  var localStatus = null;
+  var handFingerprint = '';
+  var catchEnableTimer = null;
+  /** Host lobby pick while setGame is in flight — stops stale lobby renders from snapping back to Uno. */
+  var pendingGame = null;
+
+  function setHostMode(mode) {
+    hostMode = mode === 'remote' ? 'remote' : 'local';
+    if (hostLocalBtn) {
+      hostLocalBtn.classList.toggle('active', hostMode === 'local');
+    }
+    if (hostRemoteBtn) {
+      hostRemoteBtn.classList.toggle('active', hostMode === 'remote');
+    }
+    if (serverUrlField) {
+      serverUrlField.classList.toggle('hidden', hostMode !== 'remote');
+    }
+  }
+
+  if (hostLocalBtn) {
+    hostLocalBtn.addEventListener('click', function () {
+      setHostMode('local');
+    });
+  }
+  if (hostRemoteBtn) {
+    hostRemoteBtn.addEventListener('click', function () {
+      setHostMode('remote');
+    });
+  }
+  if (serverUrlInput) {
+    serverUrlInput.addEventListener('input', function () {
+      serverUrlTouched = true;
+    });
+  }
+
+  hostBtn.addEventListener('click', function () {
+    vscode.postMessage({
+      type: 'host',
+      name: nameInput.value,
+      remote: hostMode === 'remote',
+      serverUrl: serverUrlInput ? serverUrlInput.value : '',
+    });
+  });
+
+  joinBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'join', name: nameInput.value, url: urlInput.value });
+  });
+
+  if (window.AnshinLudo) {
+    window.AnshinLudo.bind(function (message) {
+      vscode.postMessage(message);
+    });
+  }
+
+  if (window.AnshinBluff) {
+    window.AnshinBluff.bind(function (message) {
+      vscode.postMessage(message);
+    });
+  }
+
+  if (gameSelect) {
+    gameSelect.addEventListener('change', function () {
+      pendingGame = gameSelect.value;
+      showGameSettings(pendingGame);
+      vscode.postMessage({ type: 'setGame', game: pendingGame });
+    });
+  }
+
+  startBtn.addEventListener('click', function () {
+    var cards = 7;
+    if (cardsPerPlayerInput) {
+      var parsed = parseInt(cardsPerPlayerInput.value, 10);
+      if (!isNaN(parsed)) {
+        cards = Math.min(15, Math.max(1, parsed));
+      }
+      cardsPerPlayerInput.value = String(cards);
+    }
+    var deckCount = 1;
+    if (bluffDeckCountSelect) {
+      var decks = parseInt(bluffDeckCountSelect.value, 10);
+      if (decks === 2) {
+        deckCount = 2;
+      }
+      bluffDeckCountSelect.value = String(deckCount);
+    }
+    var game = pendingGame || (gameSelect && gameSelect.value) || 'uno';
+    pendingGame = game;
+    var claimMode = 'same';
+    if (bluffClaimModeSelect && bluffClaimModeSelect.value === 'next') {
+      claimMode = 'next';
+    }
+    vscode.postMessage({ type: 'setGame', game: game });
+    vscode.postMessage({
+      type: 'startGame',
+      game: game,
+      guaranteeSpecial: !!(guaranteeSpecialInput && guaranteeSpecialInput.checked),
+      cardsPerPlayer: cards,
+      deckCount: deckCount,
+      stackDraws: !!(stackDrawsInput && stackDrawsInput.checked),
+      blockades: !!(blockadesInput && blockadesInput.checked),
+      claimMode: claimMode,
+    });
+  });
+
+  leaveLobbyBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'leave' });
+  });
+
+  leaveGameBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'leave' });
+  });
+
+  copyUrlBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'copyJoinUrl' });
+  });
+
+  drawBtn.addEventListener('click', function () {
+    selectedId = null;
+    pendingWildCardId = null;
+    localStatus = null;
+    vscode.postMessage({ type: 'action', action: { type: 'draw' } });
+  });
+
+  unoBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'action', action: { type: 'uno' } });
+  });
+
+  catchBtn.addEventListener('click', function () {
+    if (catchBtn.disabled) {
+      return;
+    }
+    vscode.postMessage({ type: 'action', action: { type: 'catch' } });
+  });
+
+  cancelWildBtn.addEventListener('click', function () {
+    var game = rendered && rendered.game;
+    if (game && game.awaitingWildColor) {
+      return;
+    }
+    pendingWildCardId = null;
+    localStatus = null;
+    if (rendered) {
+      render(rendered);
+    }
+  });
+
+  wildPicker.querySelectorAll('.wild-color').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var color = btn.getAttribute('data-color');
+      var game = rendered && rendered.game;
+      if (game && game.awaitingWildColor) {
+        vscode.postMessage({ type: 'action', action: { type: 'chooseColor', color: color } });
+        return;
+      }
+      if (!pendingWildCardId) {
+        return;
+      }
+      vscode.postMessage({
+        type: 'action',
+        action: { type: 'play', cardId: pendingWildCardId, wildColor: color },
+      });
+      selectedId = null;
+      pendingWildCardId = null;
+      localStatus = null;
+    });
+  });
+
+  guiUltraBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'setGuiMode', mode: 'ultra' });
+  });
+  guiLowBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'setGuiMode', mode: 'low' });
+  });
+  guiHighBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'setGuiMode', mode: 'high' });
+  });
+
+  window.addEventListener('message', function (event) {
+    const message = event.data;
+    if (!message || message.type !== 'ui') {
+      return;
+    }
+    render(message.state);
+  });
+
+  vscode.postMessage({ type: 'ready' });
+
+  function normalizeMode(mode) {
+    if (mode === 'ultra' || mode === 'high' || mode === 'low') {
+      return mode;
+    }
+    return 'low';
+  }
+
+  function tokenFor(card) {
+    return (card.color ? card.color.charAt(0) : 'w') + shortValue(card.value);
+  }
+
+  function shortValue(value) {
+    if (value === 'skip') return 'S';
+    if (value === 'reverse') return 'R';
+    if (value === 'draw2') return '+2';
+    if (value === 'wild') return 'W';
+    if (value === 'wild4') return '+4';
+    return value;
+  }
+
+  function showGameSettings(gameId) {
+    var blocks = document.querySelectorAll('.game-settings');
+    for (var i = 0; i < blocks.length; i++) {
+      blocks[i].classList.toggle('hidden', blocks[i].id !== 'settings-' + gameId);
+    }
+  }
+
+  function gameLabel(gameId) {
+    if (!gameSelect) {
+      return gameId || 'Uno';
+    }
+    var options = gameSelect.options;
+    for (var i = 0; i < options.length; i++) {
+      if (options[i].value === gameId) {
+        return options[i].textContent || gameId;
+      }
+    }
+    return gameId || 'Uno';
+  }
+
+  /** Detect by state shape first so a Bluff hand never renders in the Uno UI. */
+  function activeGameId(state) {
+    if (!state) {
+      return null;
+    }
+    var game = state.game;
+    if (
+      game &&
+      (typeof game.canChallenge === 'boolean' ||
+        (game.lastPlay !== undefined && game.discardCount !== undefined))
+    ) {
+      return 'bluff';
+    }
+    if (game && Array.isArray(game.tokens) && game.awaiting) {
+      return 'ludo';
+    }
+    return state.gameId || null;
+  }
+
+  function showScreen(screen, gameId) {
+    var ludo = screen === 'game' && gameId === 'ludo';
+    var bluff = screen === 'game' && gameId === 'bluff';
+    menuScreen.classList.toggle('hidden', screen !== 'menu');
+    lobbyScreen.classList.toggle('hidden', screen !== 'lobby');
+    gameScreen.classList.toggle('hidden', screen !== 'game' || ludo || bluff);
+    if (ludoScreen) {
+      ludoScreen.classList.toggle('hidden', !ludo);
+    }
+    if (bluffScreen) {
+      bluffScreen.classList.toggle('hidden', !bluff);
+    }
+  }
+
+  let rendered = null;
+  setInterval(function () {
+    if (!rendered || rendered.screen !== 'game' || !rendered.game || !rendered.game.turnDeadline) {
+      return;
+    }
+    var gid = activeGameId(rendered);
+    if (gid === 'ludo' && window.AnshinLudo) {
+      window.AnshinLudo.render(rendered.game);
+      return;
+    }
+    if (gid === 'bluff' && window.AnshinBluff) {
+      window.AnshinBluff.render(rendered.game);
+      return;
+    }
+    renderTurnLine(rendered.game, normalizeMode(rendered.guiMode) === 'ultra', rendered.yourName);
+  }, 1000);
+
+  function render(state) {
+    rendered = state;
+    const mode = normalizeMode(state.guiMode);
+    const ultra = mode === 'ultra';
+    const gid = activeGameId(state);
+
+    document.body.classList.remove('gui-ultra', 'gui-low', 'gui-high');
+    document.body.classList.add('gui-' + mode);
+
+    guiUltraBtn.classList.toggle('active', mode === 'ultra');
+    guiLowBtn.classList.toggle('active', mode === 'low');
+    guiHighBtn.classList.toggle('active', mode === 'high');
+
+    showScreen(state.screen, gid);
+
+    if (unoDockBar) {
+      unoDockBar.classList.toggle(
+        'hidden',
+        state.screen !== 'game' || gid === 'ludo' || gid === 'bluff'
+      );
+    }
+
+    if (state.screen === 'menu') {
+      pendingGame = null;
+      appTitleEl.textContent = ultra ? 'Anshin' : 'Anshin · UNO';
+      menuStatus.textContent = state.status || '';
+      if (
+        serverUrlInput &&
+        !serverUrlTouched &&
+        typeof state.defaultServerUrl === 'string' &&
+        state.defaultServerUrl &&
+        !serverUrlInput.value
+      ) {
+        serverUrlInput.value = state.defaultServerUrl;
+      }
+      setHostMode(hostMode);
+      renderUnoSaid(null, ultra);
+      return;
+    }
+
+    if (state.screen === 'lobby') {
+      var ver = state.extensionVersion ? ' · v' + state.extensionVersion : '';
+      appTitleEl.textContent = ultra ? 'Anshin · lobby' + ver : 'Anshin · Lobby' + ver;
+      joinUrlDisplay.textContent = state.joinUrl || '';
+      renderJoinUrls(state.joinUrls, state.joinUrl);
+      lobbyStatus.textContent = state.status || '';
+      renderUnoSaid(null, ultra);
+      var selected = state.selectedGame || 'uno';
+      if (pendingGame && state.selectedGame === pendingGame) {
+        pendingGame = null;
+      }
+      if (pendingGame) {
+        selected = pendingGame;
+      }
+      if (gameSelect && document.activeElement !== gameSelect) {
+        gameSelect.value = selected;
+      }
+      showGameSettings(gameSelect ? gameSelect.value : selected);
+      if (chosenGame) {
+        chosenGame.textContent = gameLabel(selected);
+        chosenGame.classList.toggle('hidden', !!state.youAreHost);
+      }
+      if (startBtn) {
+        startBtn.disabled = !state.youAreHost || !state.canStart;
+      }
+      if (hostOpts) {
+        hostOpts.classList.toggle('hidden', !state.youAreHost);
+      }
+      renderLobby(state.lobbyPlayers || []);
+      return;
+    }
+
+    if (gid === 'ludo') {
+      appTitleEl.textContent = 'Anshin · Ludo';
+      if (window.AnshinLudo) {
+        window.AnshinLudo.render(state.game);
+      }
+      return;
+    }
+
+    if (gid === 'bluff') {
+      var bluffVer = state.extensionVersion ? ' · v' + state.extensionVersion : '';
+      appTitleEl.textContent = 'Anshin · Bluff' + bluffVer;
+      if (window.AnshinBluff) {
+        window.AnshinBluff.render(state.game);
+      } else if (statusEl) {
+        statusEl.textContent = 'Bluff UI failed to load. Reload the Anshin view (or Ctrl+F5 the Extension Host).';
+      }
+      return;
+    }
+
+    const game = state.game;
+    if (!game) {
+      return;
+    }
+
+    syncUnoSelection(game);
+
+    const n = game.playerCount || 2;
+    const myTurn = game.currentPlayerId === game.yourPlayerId && !game.winnerId;
+    appTitleEl.textContent = ultra ? 'Anshin' : 'Anshin · UNO · ' + n + 'P';
+    discardLabelEl.textContent = ultra ? 'Active' : 'Discard';
+    if (ultra) {
+      youLabelEl.textContent = myTurn ? 'local · turn' : 'local';
+    } else {
+      youLabelEl.textContent = 'You';
+    }
+    renderOpponents(game.opponents || [], ultra, game.currentPlayerId, game.winnerId);
+    renderTurnLine(game, ultra, state.yourName);
+    renderDiscard(game.discard, ultra, game.pendingDraw || 0);
+    renderHand(game.hand, selectedId, ultra);
+
+    const handCount = (game.hand || []).length;
+    youCountEl.textContent = ultra ? handCount + ' items' : handCount + ' cards';
+    const yourSeat = youLabelEl.closest('.seat-you');
+    if (yourSeat) {
+      yourSeat.classList.toggle('your-turn', myTurn);
+    }
+
+    statusEl.textContent = localStatus || state.status || game.status || '';
+
+    drawBtn.disabled = !myTurn || !!game.awaitingWildColor;
+    var pending = game.pendingDraw || 0;
+    if (ultra) {
+      if (pending > 0) {
+        drawBtn.textContent = 'Fetch +' + pending;
+      } else {
+        drawBtn.textContent =
+          game.drawRemaining === 0 ? 'Fetch (empty)' : 'Fetch (' + game.drawRemaining + ')';
+      }
+    } else if (pending > 0) {
+      drawBtn.textContent = 'Draw +' + pending;
+    } else {
+      drawBtn.textContent =
+        game.drawRemaining === 0
+          ? 'Draw (empty)'
+          : 'Draw (' + game.drawRemaining + ' left)';
+    }
+
+    unoBtn.textContent = ultra ? 'Mark' : 'UNO';
+    catchBtn.textContent = ultra ? 'Flag' : 'Catch';
+    updateCatchButton(game);
+    renderUnoSaid(game.unoSaid, ultra);
+
+    const choosingOpening = !!game.awaitingWildColor && game.currentPlayerId === game.yourPlayerId;
+    wildPicker.classList.toggle('hidden', !pendingWildCardId && !choosingOpening);
+    if (cancelWildBtn) {
+      cancelWildBtn.classList.toggle('hidden', choosingOpening);
+    }
+  }
+
+  function syncUnoSelection(game) {
+    var next =
+      (game.hand || [])
+        .map(function (card) {
+          return card.id;
+        })
+        .join(',') +
+      '|' +
+      game.currentPlayerId +
+      '|' +
+      String(!!game.awaitingWildColor) +
+      '|' +
+      String(game.winnerId || '');
+    if (next !== handFingerprint) {
+      handFingerprint = next;
+      selectedId = null;
+      pendingWildCardId = null;
+      localStatus = null;
+    }
+  }
+
+  function formatCardLabel(card) {
+    if (card.value === 'wild' || card.value === 'wild4') {
+      return card.value === 'wild4' ? 'Wild Draw Four' : 'Wild';
+    }
+    var color = card.color ? card.color.charAt(0).toUpperCase() + card.color.slice(1) : '';
+    return color + ' ' + card.value;
+  }
+
+  function onHandCardClick(card) {
+    if (card.playable === false) {
+      return;
+    }
+    var game = rendered && rendered.game;
+    if (!game || game.winnerId) {
+      return;
+    }
+    if (game.awaitingWildColor) {
+      localStatus = 'Choose a color first.';
+      statusEl.textContent = localStatus;
+      return;
+    }
+    if (game.currentPlayerId !== game.yourPlayerId) {
+      localStatus = 'Not your turn.';
+      statusEl.textContent = localStatus;
+      return;
+    }
+    if (selectedId === card.id) {
+      if (card.value === 'wild' || card.value === 'wild4') {
+        pendingWildCardId = card.id;
+        localStatus = 'Choose a color.';
+        render(rendered);
+        return;
+      }
+      vscode.postMessage({ type: 'action', action: { type: 'play', cardId: card.id } });
+      selectedId = null;
+      localStatus = null;
+      return;
+    }
+    selectedId = card.id;
+    pendingWildCardId = null;
+    localStatus = 'Selected ' + formatCardLabel(card) + '. Click again to play.';
+    render(rendered);
+  }
+
+  function clearCatchEnableTimer() {
+    if (catchEnableTimer) {
+      clearTimeout(catchEnableTimer);
+      catchEnableTimer = null;
+    }
+  }
+
+  /** Catch stays off for ~2s after a player goes to one card. */
+  function updateCatchButton(game) {
+    clearCatchEnableTimer();
+    var availableAt = game && game.catchAvailableAt;
+    if (typeof availableAt !== 'number') {
+      catchBtn.disabled = false;
+      return;
+    }
+    var wait = availableAt - Date.now();
+    if (wait <= 0) {
+      catchBtn.disabled = false;
+      return;
+    }
+    catchBtn.disabled = true;
+    catchEnableTimer = setTimeout(function () {
+      catchEnableTimer = null;
+      catchBtn.disabled = false;
+    }, wait);
+  }
+
+  function renderUnoSaid(unoSaid, ultra) {
+    if (!unoSaidLineEl) {
+      return;
+    }
+    if (!unoSaid) {
+      unoSaidLineEl.textContent = '';
+      unoSaidLineEl.classList.add('hidden');
+      return;
+    }
+    unoSaidLineEl.classList.remove('hidden');
+    unoSaidLineEl.textContent = ultra
+      ? 'mark · ' + (unoSaid.playerName || '')
+      : (unoSaid.playerName ? unoSaid.playerName + ' · ' : '') + 'UNO';
+  }
+
+  function renderTurnLine(game, ultra, yourName) {
+    if (!colorLineEl) {
+      return;
+    }
+    if (game.winnerId) {
+      colorLineEl.textContent = '';
+      colorLineEl.classList.add('hidden');
+      return;
+    }
+    var label = turnLabel(game, yourName);
+    var suffix = '';
+    if (game.turnDeadline && !game.winnerId) {
+      var left = Math.max(0, Math.ceil((game.turnDeadline - Date.now()) / 1000));
+      suffix = ' · ' + left + 's';
+    }
+    colorLineEl.classList.remove('hidden');
+    colorLineEl.textContent = (ultra ? 'next · ' + label : 'Turn: ' + label) + suffix;
+  }
+
+  function turnLabel(game, yourName) {
+    if (game.currentPlayerId === game.yourPlayerId) {
+      return yourName || 'You';
+    }
+    var opponents = game.opponents || [];
+    for (var i = 0; i < opponents.length; i++) {
+      if (opponents[i].id === game.currentPlayerId) {
+        return opponents[i].name || '…';
+      }
+    }
+    return '…';
+  }
+
+  function renderJoinUrls(joinUrls, primary) {
+    if (!joinUrlList) {
+      return;
+    }
+    joinUrlList.innerHTML = '';
+    const extras = (joinUrls || []).filter(function (url) {
+      return url && url !== primary;
+    });
+    extras.forEach(function (url) {
+      const li = document.createElement('li');
+      const code = document.createElement('code');
+      code.className = 'join-url';
+      code.textContent = url;
+      li.appendChild(code);
+      joinUrlList.appendChild(li);
+    });
+    joinUrlList.classList.toggle('hidden', extras.length === 0);
+  }
+
+  function renderLobby(players) {
+    lobbyList.innerHTML = '';
+    players.forEach(function (p) {
+      const li = document.createElement('li');
+      var away = p.connected === false ? ' (reconnecting)' : '';
+      li.textContent = p.name + away + (p.isHost ? ' (host)' : '');
+      lobbyList.appendChild(li);
+    });
+  }
+
+  function renderOpponents(opponents, ultra, currentPlayerId, winnerId) {
+    seatSlots.forEach(function (section) {
+      if (section) {
+        section.classList.add('hidden');
+      }
+    });
+
+    opponents.forEach(function (seat, index) {
+      const section = seatSlots[index];
+      if (!section) {
+        return;
+      }
+      section.classList.remove('hidden');
+      section.classList.toggle('disconnected', seat.connected === false);
+      section.classList.toggle('your-turn', !winnerId && seat.id === currentPlayerId);
+      const nameEl = section.querySelector('.seat-name');
+      const countEl = section.querySelector('.seat-count');
+      const cardsEl = section.querySelector('.seat-cards');
+
+      if (nameEl) {
+        var awayName = seat.connected === false ? ' · away' : '';
+        nameEl.textContent = (ultra ? 'peer-' + (index + 1) : seat.name) + awayName;
+      }
+      if (countEl) {
+        countEl.textContent = ultra
+          ? seat.cardCount + ' pending'
+          : seat.cardCount + ' cards';
+      }
+      if (!cardsEl) {
+        return;
+      }
+      cardsEl.innerHTML = '';
+      if (ultra) {
+        return;
+      }
+      var show = Math.min(seat.cardCount, 5);
+      for (var i = 0; i < show; i++) {
+        const card = document.createElement('div');
+        card.className = 'card back sm';
+        card.title = seat.name + ' · ' + seat.cardCount + ' cards';
+        cardsEl.appendChild(card);
+      }
+    });
+  }
+
+  function renderDiscard(card, ultra, pendingDraw) {
+    discardEl.innerHTML = '';
+    if (!card) {
+      return;
+    }
+    discardEl.appendChild(createFaceCard(card, false, ultra));
+    if (pendingDraw > 0) {
+      var badge = document.createElement('div');
+      badge.className = 'pending-draw';
+      badge.textContent = ultra ? '+' + pendingDraw : '+' + pendingDraw + ' pending';
+      discardEl.appendChild(badge);
+    }
+  }
+
+  function renderHand(hand, selectedCardId, ultra) {
+    handEl.innerHTML = '';
+    (hand || []).forEach(function (card) {
+      const el = createFaceCard(card, true, ultra);
+      if (card.id === selectedCardId) {
+        el.classList.add('selected');
+      }
+      if (card.playable === false) {
+        el.classList.add('unplayable');
+      }
+      el.addEventListener('click', function () {
+        onHandCardClick(card);
+      });
+      handEl.appendChild(el);
+    });
+  }
+
+  function createFaceCard(card, isHand, ultra) {
+    const el = document.createElement('div');
+    const colorClass = !ultra && card.color ? ' ' + card.color : '';
+    const wildClass = !ultra && !card.color ? ' wild' : '';
+    el.className = 'card' + colorClass + wildClass + (isHand ? ' hand' : '');
+    el.dataset.id = card.id;
+
+    if (ultra) {
+      el.classList.add('token');
+      el.textContent = tokenFor(card);
+      return el;
+    }
+
+    const color = document.createElement('span');
+    color.className = 'color';
+    color.textContent = card.color ? card.color.charAt(0) : 'W';
+
+    const value = document.createElement('span');
+    value.className = 'value';
+    value.textContent = shortValue(card.value);
+
+    el.appendChild(color);
+    el.appendChild(value);
+    return el;
+  }
+})();
+
+</script>
+</body>
+</html>

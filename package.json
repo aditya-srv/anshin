@@ -49,7 +49,7 @@
     "server": "node out/server.js",
     "test": "npm run compile && node --test out/room/*.test.js out/uno/*.test.js out/ludo/*.test.js out/bluff/*.test.js",
     "build": "npm run compile && npx --yes @vscode/vsce package --allow-missing-repository",
-    "update": "bash scripts/update.sh"
+    "update": "node scripts/update.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

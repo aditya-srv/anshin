@@ -68,6 +68,6 @@ npm test          # compile + unit/integration tests (room, uno, ludo, bluff)
 
 ```bash
 npm run build          # compile + package anshin-<version>.vsix
-npm run update         # checkout latest version branch + install its .vsix
+npm run update         # checkout latest version branch + install its .vsix (node; works on Windows)
 npm run update -- v0.0.16
 ```
